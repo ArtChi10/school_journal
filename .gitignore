@@ -1,0 +1,16 @@
+.venv/
+.idea/
+__pycache__/
+*.pyc
+.DS_Store
+__MACOSX/
+
+client_secret.json
+token.json
+token_gmail.json
+token_gspread.json
+
+**/client_secret.json
+**/token.json
+**/token_gmail.json
+**/token_gspread.json
