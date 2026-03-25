@@ -1,0 +1,16 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-0}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./school_journal-main/output:/app/school_journal-main/output
+      - ./school_journal-main/input:/app/school_journal-main/input

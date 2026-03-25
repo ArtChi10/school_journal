@@ -1,0 +1,8 @@
+.git
+.venv
+__pycache__
+*.pyc
+.idea
+__MACOSX
+school_journal-main/output
+school_journal-main/done
