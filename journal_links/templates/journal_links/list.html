@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Class sheet links</title>
+</head>
+<body>
+  <h1>Class sheet links</h1>
+
+  <p><a href="{% url 'journal_links:create_link' %}">Create new link</a></p>
+
+  <table border="1" cellpadding="6" cellspacing="0">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Class</th>
+        <th>Subject</th>
+        <th>Teacher</th>
+        <th>Google Sheet URL</th>
+        <th>Is active</th>
+        <th>Updated at</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for link in links %}
+        <tr>
+          <td>{{ link.id }}</td>
+          <td>{{ link.class_code }}</td>
+          <td>{{ link.subject_name }}</td>
+          <td>{{ link.teacher_name }}</td>
+          <td><a href="{{ link.google_sheet_url }}" target="_blank" rel="noopener">Open</a></td>
+          <td>{{ link.is_active }}</td>
+          <td>{{ link.updated_at }}</td>
+          <td>
+            <a href="{% url 'journal_links:edit_link' link.id %}">Edit</a>
+            {% if link.is_active %}
+              <form action="{% url 'journal_links:disable_link' link.id %}" method="post" style="display:inline;">
+                {% csrf_token %}
+                <button type="submit">Disable</button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="8">No links yet.</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>
