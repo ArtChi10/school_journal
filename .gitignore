@@ -14,3 +14,4 @@ token_gspread.json
 **/token.json
 **/token_gmail.json
 **/token_gspread.json
+.env
