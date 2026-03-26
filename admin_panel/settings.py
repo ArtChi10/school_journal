@@ -35,6 +35,9 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "jobs",
     "validation",
+    "journal_links",
+    "pipeline",
+    "webapp",
     "notifications",
 ]
 
