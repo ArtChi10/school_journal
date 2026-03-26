@@ -1,5 +1,5 @@
 import uuid
-
+from django.conf import settings
 from django.db import models
 
 
@@ -17,6 +17,13 @@ class JobRun(models.Model):
     finished_at = models.DateTimeField(null=True, blank=True)
     params_json = models.JSONField(default=dict, blank=True)
     result_json = models.JSONField(default=dict, blank=True)
+    initiated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="job_runs",
+    )
 
     class Meta:
         ordering = ["-started_at"]
@@ -40,6 +47,10 @@ class JobLog(models.Model):
 
     class Meta:
         ordering = ["ts"]
+        indexes = [
+            models.Index(fields=["job_run", "ts"]),
+            models.Index(fields=["level"]),
+        ]
 
     def __str__(self) -> str:
         return f"{self.ts} [{self.level}] {self.message[:50]}"
