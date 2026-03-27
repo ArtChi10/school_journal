@@ -7,6 +7,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("telegram/webhook/", telegram_webhook, name="telegram_webhook"),
     path("", include("journal_links.urls")),
+    path("", include("pipeline.urls")),
     path("runs/", list_job_runs, name="job_run_list"),
     path("runs/<uuid:run_id>/", job_run_detail, name="job_run_detail"),
 ]

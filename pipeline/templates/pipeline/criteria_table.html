@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Таблица критериев</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
+    th { background-color: #f6f6f6; }
+    form { margin-bottom: 16px; display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 8px; }
+    .controls { grid-column: 1 / -1; }
+    .status-ok { color: #027a48; font-weight: 700; }
+    .status-failed { color: #b42318; font-weight: 700; }
+    .pager { margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <h1>Таблица критериев</h1>
+
+  <form method="get">
+    <label>
+      Класс
+      <select name="class_code">
+        <option value="">Все</option>
+        {% for class_value in class_choices %}
+          <option value="{{ class_value }}" {% if filters.class_code == class_value %}selected{% endif %}>{{ class_value }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      Учитель
+      <select name="teacher_name">
+        <option value="">Все</option>
+        {% for teacher_value in teacher_choices %}
+          <option value="{{ teacher_value }}" {% if filters.teacher_name == teacher_value %}selected{% endif %}>{{ teacher_value }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      Предмет
+      <select name="subject_name">
+        <option value="">Все</option>
+        {% for subject_value in subject_choices %}
+          <option value="{{ subject_value }}" {% if filters.subject_name == subject_value %}selected{% endif %}>{{ subject_value }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      Модуль
+      <select name="module_number">
+        <option value="">Все</option>
+        {% for module_value in module_choices %}
+          <option value="{{ module_value }}" {% if filters.module_number == module_value|stringformat:"s" %}selected{% endif %}>{{ module_value }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <div class="controls">
+      <button type="submit">Применить фильтры</button>
+      <a href="{% url 'pipeline:criteria_table' %}">Сбросить</a>
+    </div>
+  </form>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Класс</th>
+        <th>Учитель</th>
+        <th>Предмет</th>
+        <th>Модуль</th>
+        <th>Исходный критерий</th>
+        <th>AI-версия</th>
+        <th>Статус AI</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in page_obj.object_list %}
+        <tr>
+          <td>{{ row.class_code }}</td>
+          <td>{{ row.teacher_name }}</td>
+          <td>{{ row.subject_name }}</td>
+          <td>{{ row.module_number }}</td>
+          <td>{{ row.criterion_text }}</td>
+          <td>{{ row.criterion_text_ai|default:"" }}</td>
+          <td>
+            {% if row.criterion_text_ai %}
+              <span class="status-ok">ok</span>
+            {% else %}
+              <span class="status-failed">failed</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7">Нет данных.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="pager">
+    {% if page_obj.has_previous %}
+      <a href="?page={{ page_obj.previous_page_number }}{% if querystring %}&{{ querystring }}{% endif %}">← Пред.</a>
+    {% endif %}
+    <span>Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}
+      <a href="?page={{ page_obj.next_page_number }}{% if querystring %}&{{ querystring }}{% endif %}">След. →</a>
+    {% endif %}
+  </div>
+</body>
+</html>
