@@ -2,6 +2,7 @@ from __future__ import annotations
 import os
 import re
 import tempfile
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from urllib.request import urlopen
@@ -17,7 +18,10 @@ _GOOGLE_SHEET_RE = re.compile(r"/spreadsheets/d/([a-zA-Z0-9-_]+)")
 GOOGLE_ACCESS_MODE_PUBLIC = "public_link"
 GOOGLE_ACCESS_MODE_OAUTH_OWNER = "oauth_owner"
 GOOGLE_ACCESS_MODE_DEFAULT = GOOGLE_ACCESS_MODE_PUBLIC
-GOOGLE_OAUTH_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+GOOGLE_OAUTH_SCOPES = [
+    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/spreadsheets.readonly",
+]
 
 
 class GoogleWorkbookAccessError(RuntimeError):
@@ -66,15 +70,71 @@ def _build_export_url(url: str) -> str:
     return export_url
 
 
-def fetch_workbook_for_link(link: ClassSheetLink) -> Path:
-    export_url = _build_export_url(link.google_sheet_url)
+def _require_env_path(var_name: str) -> Path:
+    raw = (os.getenv(var_name) or "").strip()
+    if not raw:
+        raise GoogleWorkbookAccessError(f"{var_name} is required when GOOGLE_ACCESS_MODE=oauth_owner")
 
+    path = Path(raw)
+    if not path.exists():
+        raise GoogleWorkbookAccessError(f"{var_name} file does not exist: {path}")
+
+    return path
+
+def _download_workbook_public_link(link: ClassSheetLink) -> Path:
+    export_url = _build_export_url(link.google_sheet_url)
     with urlopen(export_url, timeout=30) as response:
         data = response.read()
 
     with tempfile.NamedTemporaryFile(prefix="validation_", suffix=".xlsx", delete=False) as tmp_file:
         tmp_file.write(data)
         return Path(tmp_file.name)
+
+def _download_workbook_oauth_owner(link: ClassSheetLink) -> Path:
+    _ = _require_env_path("GOOGLE_OAUTH_CLIENT_SECRET_PATH")
+    token_path = _require_env_path("GOOGLE_OAUTH_TOKEN_PATH")
+    file_id = _extract_google_sheet_file_id(link.google_sheet_url)
+    if not file_id:
+        raise GoogleWorkbookAccessError(f"Could not extract Google Sheet file id from URL: {link.google_sheet_url}")
+
+    # Imports are local to avoid hard dependency during startup in environments
+    # where Google packages may be absent until this mode is used.
+    from google.auth.transport.requests import Request
+    from google.auth.transport.requests import AuthorizedSession
+    from google.oauth2.credentials import Credentials
+
+    creds = Credentials.from_authorized_user_file(str(token_path), GOOGLE_OAUTH_SCOPES)
+    if not creds.valid:
+        if creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            token_path.write_text(creds.to_json(), encoding="utf-8")
+        else:
+            raise GoogleWorkbookAccessError(
+                "OAuth token is invalid and cannot be refreshed. Re-authorize and recreate GOOGLE_OAUTH_TOKEN_PATH."
+            )
+
+    export_url = _build_export_url(link.google_sheet_url)
+    session = AuthorizedSession(creds)
+    response = session.get(export_url, timeout=30)
+    if response.status_code >= 400:
+        body_preview = (response.text or "").strip().replace("\n", " ")[:240]
+        raise GoogleWorkbookAccessError(
+            f"OAuth download failed: HTTP {response.status_code}. "
+            f"URL={export_url}. Response={body_preview}"
+        )
+
+    with tempfile.NamedTemporaryFile(prefix="validation_", suffix=".xlsx", delete=False) as tmp_file:
+        tmp_file.write(response.content)
+        return Path(tmp_file.name)
+
+
+def fetch_workbook_for_link(link: ClassSheetLink) -> Path:
+    mode = get_google_access_mode()
+    if mode == GOOGLE_ACCESS_MODE_OAUTH_OWNER:
+        return _download_workbook_oauth_owner(link)
+    return _download_workbook_public_link(link)
+
+
 
 
 def _collect_links(link_id: int | None, class_code: str | None, all_active: bool) -> list[ClassSheetLink]:
@@ -91,6 +151,11 @@ def _collect_links(link_id: int | None, class_code: str | None, all_active: bool
 
     return list(queryset.order_by("id"))
 
+def fetch_workbook_for_link(link: ClassSheetLink) -> Path:
+    mode = get_google_access_mode()
+    if mode == GOOGLE_ACCESS_MODE_OAUTH_OWNER:
+        return _download_workbook_oauth_owner(link)
+    return _download_workbook_public_link(link)
 
 def run_validation_job(
     *,
