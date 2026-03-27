@@ -44,3 +44,17 @@ class ClassSheetLinkFormTests(TestCase):
 
         self.assertFalse(form.is_valid())
         self.assertIn("google_sheet_url", form.errors)
+
+    def test_rejects_google_docs_without_sheet_id(self):
+        form = ClassSheetLinkForm(
+            data={
+                "class_code": "5A",
+                "subject_name": "Math",
+                "teacher_name": "Teacher",
+                "google_sheet_url": "https://docs.google.com/spreadsheets/d/",
+                "is_active": True,
+            }
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("google_sheet_url", form.errors)

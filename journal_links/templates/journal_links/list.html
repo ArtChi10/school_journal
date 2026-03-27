@@ -1,25 +1,25 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="utf-8">
-  <title>Class sheet links</title>
+ <title>Классы и таблицы</title>
 </head>
 <body>
-  <h1>Class sheet links</h1>
+   <h1>Классы и таблицы</h1>
 
-  <p><a href="{% url 'journal_links:create_link' %}">Create new link</a></p>
+  <p><a href="{% url 'journal_links:create_link' %}">Добавить ссылку</a></p>
 
   <table border="1" cellpadding="6" cellspacing="0">
     <thead>
       <tr>
         <th>ID</th>
-        <th>Class</th>
-        <th>Subject</th>
-        <th>Teacher</th>
-        <th>Google Sheet URL</th>
-        <th>Is active</th>
-        <th>Updated at</th>
-        <th>Actions</th>
+        <th>Класс</th>
+        <th>Предмет</th>
+        <th>Учитель</th>
+        <th>Google Sheet</th>
+        <th>Активна</th>
+        <th>Обновлена</th>
+        <th>Действия</th>
       </tr>
     </thead>
     <tbody>
@@ -29,11 +29,11 @@
           <td>{{ link.class_code }}</td>
           <td>{{ link.subject_name }}</td>
           <td>{{ link.teacher_name }}</td>
-          <td><a href="{{ link.google_sheet_url }}" target="_blank" rel="noopener">Open</a></td>
+          <td><a href="{{ link.google_sheet_url }}" target="_blank" rel="noopener">Открыть</a></td>
           <td>{{ link.is_active }}</td>
           <td>{{ link.updated_at }}</td>
           <td>
-            <a href="{% url 'journal_links:edit_link' link.id %}">Edit</a>
+             <a href="{% url 'journal_links:edit_link' link.id %}">Редактировать</a>
             {% if link.is_active %}
             <form action="{% url 'journal_links:run_link_validation' link.id %}" method="post" style="display:inline;">
                 {% csrf_token %}
@@ -41,14 +41,14 @@
               </form>
               <form action="{% url 'journal_links:disable_link' link.id %}" method="post" style="display:inline;">
                 {% csrf_token %}
-                <button type="submit">Disable</button>
+                <button type="submit">Отключить</button>
               </form>
             {% endif %}
           </td>
         </tr>
       {% empty %}
         <tr>
-          <td colspan="8">No links yet.</td>
+           <td colspan="8">Ссылок пока нет.</td>
         </tr>
       {% endfor %}
     </tbody>

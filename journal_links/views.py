@@ -24,7 +24,7 @@ def create_link(request):
     return render(
         request,
         "journal_links/form.html",
-        {"form": form, "title": "Create class sheet link", "submit_label": "Create"},
+        {"form": form, "title": "Классы и таблицы: создать ссылку", "submit_label": "Сохранить"},
     )
 
 
@@ -42,7 +42,7 @@ def edit_link(request, pk):
     return render(
         request,
         "journal_links/form.html",
-        {"form": form, "title": "Edit class sheet link", "submit_label": "Save"},
+        {"form": form, "title": "Классы и таблицы: редактировать ссылку", "submit_label": "Сохранить"},
     )
 
 

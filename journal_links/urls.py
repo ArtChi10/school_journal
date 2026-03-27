@@ -9,5 +9,5 @@ urlpatterns = [
     path("links/new/", create_link, name="create_link"),
     path("links/<int:pk>/edit/", edit_link, name="edit_link"),
     path("links/<int:pk>/disable/", disable_link, name="disable_link"),
-path("links/<int:pk>/validate/", run_link_validation, name="run_link_validation"),
+    path("links/<int:pk>/validate/", run_link_validation, name="run_link_validation"),
 ]

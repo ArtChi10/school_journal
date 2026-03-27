@@ -11,3 +11,16 @@ class TeacherContact(models.Model):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.chat_id or 'unlinked'})"
+
+    @property
+    def teacher_name(self) -> str:
+        """Backward-compatible alias used by older admin list_display configs."""
+        return self.name
+
+    @property
+    def last_seen_at(self):
+        """
+        Compatibility placeholder for legacy admin configs.
+        Telegram contact records currently do not track last_seen timestamps.
+        """
+        return None
