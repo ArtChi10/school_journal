@@ -1,6 +1,7 @@
 import json
 
 from django.http import HttpRequest, JsonResponse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
 from .models import TeacherContact
@@ -44,8 +45,9 @@ def telegram_webhook(request: HttpRequest) -> JsonResponse:
 
     contact.chat_id = str(chat_id)
     contact.is_active = True
+    contact.last_seen_at = timezone.now()
     contact.registration_token = None
-    contact.save(update_fields=["chat_id", "is_active", "registration_token"])
+    contact.save(update_fields=["chat_id", "is_active", "last_seen_at", "registration_token"])
 
     try:
         send_telegram(contact.chat_id, f"Регистрация успешна. Контакт привязан: {contact.name}.")
