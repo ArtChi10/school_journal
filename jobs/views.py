@@ -56,5 +56,22 @@ def list_job_runs(request):
 
 
 def job_run_detail(request, run_id):
-    job_run = get_object_or_404(JobRun, id=run_id)
-    return render(request, "jobs/jobrun_detail.html", {"job_run": job_run})
+    job_run = get_object_or_404(JobRun.objects.select_related("initiated_by"), id=run_id)
+    logs = job_run.logs.all().order_by("ts")
+
+    summary_payload = None
+    if isinstance(job_run.result_json, dict):
+        possible_summary = job_run.result_json.get("summary")
+        if isinstance(possible_summary, dict):
+            summary_payload = possible_summary
+
+    return render(
+        request,
+        "jobs/jobrun_detail.html",
+        {
+            "job_run": job_run,
+            "logs": logs,
+            "back_query": request.GET.urlencode(),
+            "result_summary": summary_payload,
+        },
+    )

@@ -3,16 +3,148 @@
 <head>
   <meta charset="utf-8">
   <title>Job run {{ job_run.id }}</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 24px;
+    }
+
+    .summary-card,
+    .result-summary,
+    .logs-block {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 8px 16px;
+    }
+
+    .muted {
+      color: #666;
+    }
+
+    .logs-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .logs-table th,
+    .logs-table td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    .logs-table th {
+      background-color: #f8f8f8;
+    }
+
+    .log-level {
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .level-error {
+      color: #b42318;
+    }
+
+    .level-warning {
+      color: #b54708;
+    }
+
+    .level-info {
+      color: #344054;
+    }
+
+    details summary {
+      cursor: pointer;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      margin: 8px 0 0;
+      font-size: 13px;
+    }
+  </style>
 </head>
 <body>
-  <h1>Job run details</h1>
+  <p>
+    <a href="{% url 'job_run_list' %}{% if back_query %}?{{ back_query }}{% endif %}">← Назад к списку</a>
+  </p>
 
-  <p><strong>ID:</strong> {{ job_run.id }}</p>
-  <p><strong>Job type:</strong> {{ job_run.job_type }}</p>
-  <p><strong>Status:</strong> {{ job_run.get_status_display }}</p>
-  <p><strong>Started at:</strong> {{ job_run.started_at|default:"—" }}</p>
-  <p><strong>Finished at:</strong> {{ job_run.finished_at|default:"—" }}</p>
+  <h1>Детали запуска</h1>
 
-  <p><a href="{% url 'job_run_list' %}">Back to list</a></p>
+  <section class="summary-card">
+    <h2>Summary</h2>
+    <div class="summary-grid">
+      <div><strong>ID:</strong> {{ job_run.id }}</div>
+      <div><strong>Job type:</strong> {{ job_run.job_type }}</div>
+      <div><strong>Status:</strong> {{ job_run.get_status_display }}</div>
+      <div><strong>Started at:</strong> {{ job_run.started_at|default:"—" }}</div>
+      <div><strong>Finished at:</strong> {{ job_run.finished_at|default:"—" }}</div>
+      <div><strong>Initiated by:</strong> {{ job_run.initiated_by|default:"—" }}</div>
+    </div>
+  </section>
+  {% if result_summary %}
+    <section class="result-summary">
+      <h2>Result summary</h2>
+      <table class="logs-table">
+        <tbody>
+          {% for key, value in result_summary.items %}
+            <tr>
+              <th>{{ key }}</th>
+              <td>{{ value }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  {% endif %}
+
+  <section class="logs-block">
+    <h2>Timeline logs</h2>
+    <table class="logs-table">
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th>Level</th>
+          <th>Message</th>
+          <th>Context</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+          <tr>
+            <td>{{ log.ts }}</td>
+            <td>
+              <span class="log-level level-{{ log.level }}">{{ log.level }}</span>
+            </td>
+            <td>{{ log.message }}</td>
+            <td>
+              {% if log.context_json %}
+                <details>
+                  <summary>Показать context_json</summary>
+                  <pre>{{ log.context_json }}</pre>
+                </details>
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="4" class="muted">Логи отсутствуют.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
 </body>
 </html>
