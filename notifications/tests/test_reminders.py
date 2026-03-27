@@ -82,6 +82,7 @@ class SendValidationRemindersTests(TestCase):
         log_messages = list(JobLog.objects.filter(job_run=self.job_run).values_list("message", flat=True))
         self.assertIn("Reminder sent to Teacher A", log_messages)
         self.assertIn("Reminder skipped for Teacher B: no_contact", log_messages)
+        self.assertIn("ADMIN_LOG_CHAT_ID is not configured; admin summary skipped", log_messages)
 
     @patch("notifications.reminders.send_telegram", side_effect=TelegramSendError("boom"))
     def test_logs_errors_when_telegram_fails(self, _send_telegram_mock):
@@ -97,6 +98,49 @@ class SendValidationRemindersTests(TestCase):
         self.assertIn("Failed reminder for Teacher A", error_log.message)
 
     @patch("notifications.reminders.send_telegram")
+    def test_sends_admin_summary_when_configured(self, send_telegram_mock):
+        TeacherContact.objects.create(name="Teacher A", chat_id="111", is_active=True)
+        with self.settings(ADMIN_LOG_CHAT_ID="999"):
+            result = send_validation_reminders_for_job(self.job_run)
+
+        self.assertEqual(result, {"sent": 1, "skipped": 3, "errors": 0})
+        self.assertEqual(send_telegram_mock.call_count, 2)
+        admin_call = send_telegram_mock.call_args_list[1]
+        self.assertEqual(admin_call.args[0], "999")
+        self.assertIn("Validation summary (job_id=", admin_call.args[1])
+        self.assertIn("• sent: 1", admin_call.args[1])
+        self.assertIn("Teacher A", admin_call.args[1])
+        self.assertIn("5A / Math", admin_call.args[1])
+        self.assertIn("Нет оценки у ученика", admin_call.args[1])
+
+        payload_log = JobLog.objects.get(job_run=self.job_run, message="Validation admin summary payload")
+        self.assertEqual(payload_log.context_json["total_teachers"], 4)
+        self.assertEqual(payload_log.context_json["sent"], 1)
+
+        status_log = JobLog.objects.get(job_run=self.job_run, message="Admin summary sent")
+        self.assertEqual(status_log.context_json["status"], "sent")
+        self.assertEqual(status_log.context_json["chat_id"], "999")
+
+    @patch("notifications.reminders.send_telegram")
+    def test_admin_summary_error_does_not_fail_job(self, send_telegram_mock):
+        TeacherContact.objects.create(name="Teacher A", chat_id="111", is_active=True)
+
+        def _send_side_effect(chat_id, *_args, **_kwargs):
+            if chat_id == "999":
+                raise TelegramSendError("admin down")
+            return {"ok": True}
+
+        send_telegram_mock.side_effect = _send_side_effect
+
+        with self.settings(ADMIN_LOG_CHAT_ID="999"):
+            result = send_validation_reminders_for_job(self.job_run)
+
+        self.assertEqual(result, {"sent": 1, "skipped": 3, "errors": 0})
+        self.assertEqual(send_telegram_mock.call_count, 2)
+        error_log = JobLog.objects.get(job_run=self.job_run, message__startswith="Failed to send admin summary:")
+        self.assertIn("admin down", error_log.message)
+
+    @patch("notifications.reminders.send_telegram")
     def test_skip_reasons_no_chat_and_inactive(self, send_telegram_mock):
         TeacherContact.objects.create(name="Teacher A", chat_id="111", is_active=True)
         TeacherContact.objects.create(name="Teacher C", chat_id="", is_active=True)
@@ -108,7 +152,7 @@ class SendValidationRemindersTests(TestCase):
         send_telegram_mock.assert_called_once()
 
         warnings = JobLog.objects.filter(job_run=self.job_run, level=JobLog.Level.WARNING)
-        reasons = {log.context_json.get("reason") for log in warnings}
+        reasons = {log.context_json.get("reason") for log in warnings if log.context_json.get("reason")}
         self.assertEqual(reasons, {"no_contact", "no_chat_id", "inactive"})
 
 

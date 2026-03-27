@@ -95,3 +95,4 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_BOT_USERNAME = os.getenv("TELEGRAM_BOT_USERNAME", "")
+ADMIN_LOG_CHAT_ID = os.getenv("ADMIN_LOG_CHAT_ID", "")

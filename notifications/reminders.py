@@ -1,4 +1,5 @@
 from collections import Counter, defaultdict
+from django.conf import settings
 
 from jobs.models import JobLog, JobRun
 from jobs.services import log_step
@@ -68,6 +69,115 @@ def _build_teacher_message(teacher_name: str, teacher_issues: list[dict]) -> str
 
     lines.append("Пожалуйста, исправьте и подтвердите.")
     return "\n".join(lines)
+
+
+def _build_admin_summary_payload(
+    grouped_by_teacher: dict[str, list[dict]],
+    *,
+    sent: int,
+    skipped: int,
+    errors: int,
+) -> dict:
+    teachers_with_issues: list[dict] = []
+
+    for teacher_name in sorted(grouped_by_teacher):
+        teacher_issues = grouped_by_teacher[teacher_name]
+        issue_counter: Counter[tuple[str, str]] = Counter()
+        for issue in teacher_issues:
+            issue_counter[(_issue_location(issue), _issue_problem_text(issue))] += 1
+
+        details = [
+            {
+                "class_subject": location,
+                "problem": problem,
+                "count": count,
+            }
+            for (location, problem), count in sorted(issue_counter.items())
+        ]
+        teachers_with_issues.append(
+            {
+                "teacher": teacher_name,
+                "issues_count": len(teacher_issues),
+                "details": details,
+            }
+        )
+
+    return {
+        "total_teachers": len(grouped_by_teacher),
+        "sent": sent,
+        "skipped": skipped,
+        "errors": errors,
+        "teachers_with_issues": teachers_with_issues,
+    }
+
+
+def _build_admin_summary_text(job_run: JobRun, payload: dict) -> str:
+    lines = [
+        f"Validation summary (job_id={job_run.id})",
+        "",
+        "Метрики:",
+        f"• всего учителей: {payload['total_teachers']}",
+        f"• sent: {payload['sent']}",
+        f"• skipped: {payload['skipped']}",
+        f"• errors: {payload['errors']}",
+        "",
+        "Кто не заполнил:",
+    ]
+
+    teachers_with_issues = payload.get("teachers_with_issues", [])
+    if not teachers_with_issues:
+        lines.append("• нет проблемных учителей")
+        return "\n".join(lines)
+
+    for teacher_item in teachers_with_issues:
+        teacher = teacher_item["teacher"]
+        issues_count = teacher_item["issues_count"]
+        lines.append(f"• {teacher} (проблем: {issues_count})")
+        for detail in teacher_item["details"]:
+            lines.append(
+                "  - "
+                f"{detail['class_subject']} — {detail['problem']} "
+                f"(x{detail['count']})"
+            )
+
+    return "\n".join(lines)
+
+
+def _send_admin_summary(job_run: JobRun, payload: dict) -> None:
+    _log(job_run, JobLog.Level.INFO, "Validation admin summary payload", payload)
+
+    admin_chat_id = _clean_str(getattr(settings, "ADMIN_LOG_CHAT_ID", ""))
+    if not admin_chat_id:
+        _log(
+            job_run,
+            JobLog.Level.WARNING,
+            "ADMIN_LOG_CHAT_ID is not configured; admin summary skipped",
+        )
+        return
+
+    text = _build_admin_summary_text(job_run, payload)
+    try:
+        send_telegram(admin_chat_id, text, retries=1, job_run_id=job_run.id)
+        _log(
+            job_run,
+            JobLog.Level.INFO,
+            "Admin summary sent",
+            {
+                "chat_id": admin_chat_id,
+                "status": "sent",
+            },
+        )
+    except TelegramSendError as exc:
+        _log(
+            job_run,
+            JobLog.Level.ERROR,
+            f"Failed to send admin summary: {exc}",
+            {
+                "chat_id": admin_chat_id,
+                "status": "error",
+                "error": str(exc),
+            },
+        )
 
 
 def _resolve_contact(teacher_name: str) -> tuple[TeacherContact | None, str | None]:
@@ -151,4 +261,11 @@ def send_validation_reminders_for_job(job_run: JobRun) -> dict:
 
     summary = {"sent": sent, "skipped": skipped, "errors": errors}
     _log(job_run, JobLog.Level.INFO, "Validation reminders summary", summary)
+    admin_summary_payload = _build_admin_summary_payload(
+        grouped_by_teacher,
+        sent=sent,
+        skipped=skipped,
+        errors=errors,
+    )
+    _send_admin_summary(job_run, admin_summary_payload)
     return summary
