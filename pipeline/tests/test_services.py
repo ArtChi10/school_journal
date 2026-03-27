@@ -4,7 +4,11 @@ from pathlib import Path
 from django.test import SimpleTestCase
 from openpyxl import Workbook
 
-from pipeline.services import WorkbookReadError, extract_raw_criteria_from_workbook
+from pipeline.services import (
+    WorkbookReadError,
+    add_ai_normalized_criteria,
+    extract_raw_criteria_from_workbook,
+)
 
 
 def _build_workbook(path: Path) -> None:
@@ -34,6 +38,23 @@ def _build_workbook(path: Path) -> None:
     ws_no_anchor.cell(row=5, column=3, value="Критерий без якоря")
 
     wb.save(path)
+
+class _FakeResponses:
+    def __init__(self):
+        self.calls = []
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+
+        class _Response:
+            output_text = "Нормализованный критерий"
+
+        return _Response()
+
+
+class _FakeOpenAIClient:
+    def __init__(self):
+        self.responses = _FakeResponses()
 
 
 class CriteriaExtractorServiceTests(SimpleTestCase):
@@ -69,3 +90,39 @@ class CriteriaExtractorServiceTests(SimpleTestCase):
     def test_missing_or_invalid_workbook_raises_predictable_exception(self):
         with self.assertRaises(WorkbookReadError):
             extract_raw_criteria_from_workbook("not_existing_workbook.xlsx", class_code="5A")
+
+    def test_add_ai_normalized_criteria_keeps_source_and_adds_ai_field(self):
+        fake_client = _FakeOpenAIClient()
+        extracted_rows = [
+            {
+                "class_code": "5A",
+                "subject_name": "Math",
+                "teacher_name": "Ms. Frizzle",
+                "module_number": 2,
+                "criterion_text": "Сложная и двусмысленная формулировка",
+                "source_sheet_name": "Math",
+                "source_workbook": "criteria.xlsx",
+            },
+            {
+                "class_code": "5A",
+                "subject_name": "Math",
+                "teacher_name": "Ms. Frizzle",
+                "module_number": 2,
+                "criterion_text": "Еще один критерий",
+                "source_sheet_name": "Math",
+                "source_workbook": "criteria.xlsx",
+            },
+        ]
+
+        result = add_ai_normalized_criteria(extracted_rows, client=fake_client)
+
+        self.assertEqual(len(result), 2)
+        self.assertEqual(
+            [row["criterion_text_ai"] for row in result],
+            ["Нормализованный критерий", "Нормализованный критерий"],
+        )
+        self.assertEqual(
+            [row["criterion_text"] for row in result],
+            ["Сложная и двусмысленная формулировка", "Еще один критерий"],
+        )
+        self.assertEqual(len(fake_client.responses.calls), 2)

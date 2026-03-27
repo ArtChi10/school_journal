@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 from pathlib import Path
 from zipfile import BadZipFile
@@ -18,10 +19,13 @@ _EXCLUDED_HEADER_KEYWORDS = (
     "resit",
     "make-up",
 )
-
+_DEFAULT_NORMALIZATION_MODEL = "gpt-4.1-mini"
 
 class WorkbookReadError(ValueError):
     """Raised when a workbook cannot be read for criteria extraction."""
+
+class CriterionNormalizationError(ValueError):
+    """Raised when criterion normalization via AI fails."""
 
 
 def _normalize_text(value: object) -> str:
@@ -63,6 +67,78 @@ def _parse_module_number(value: object) -> int:
     except (ValueError, TypeError):
         match = re.search(r"\d+", as_text)
         return int(match.group(0)) if match else 0
+
+def _get_openai_client():
+    try:
+        from openai import OpenAI
+    except Exception as exc:  # pragma: no cover - exercised in environments without dependency
+        raise CriterionNormalizationError(
+            "OpenAI client is not available. Install the 'openai' package."
+        ) from exc
+
+    return OpenAI()
+
+
+def normalize_criterion_text_with_ai(
+    criterion_text: str,
+    *,
+    client=None,
+    model: str | None = None,
+) -> str:
+    """Normalize criterion wording via ChatGPT Responses API while preserving intent."""
+    source_text = str(criterion_text or "").strip()
+    if not source_text:
+        return ""
+
+    ai_client = client or _get_openai_client()
+    model_name = model or os.getenv("OPENAI_CRITERIA_MODEL", _DEFAULT_NORMALIZATION_MODEL)
+
+    instructions = (
+        "Нормализуй формулировку критерия оценивания. "
+        "Убери двусмысленность и лишние повторы, сохрани исходный смысл. "
+        "Верни только итоговую формулировку без комментариев и пояснений."
+    )
+
+    try:
+        response = ai_client.responses.create(
+            model=model_name,
+            input=[
+                {"role": "system", "content": instructions},
+                {"role": "user", "content": source_text},
+            ],
+            temperature=0,
+        )
+    except Exception as exc:
+        raise CriterionNormalizationError(
+            f"AI normalization failed for criterion '{source_text[:100]}'"
+        ) from exc
+
+    normalized = str(getattr(response, "output_text", "") or "").strip()
+    if not normalized:
+        raise CriterionNormalizationError("AI normalization returned an empty response")
+
+    return normalized
+
+
+def add_ai_normalized_criteria(
+    extracted_rows: list[dict],
+    *,
+    client=None,
+    model: str | None = None,
+) -> list[dict]:
+    """Return extracted rows enriched with `criterion_text_ai` for each row."""
+    normalized_rows: list[dict] = []
+
+    for row in extracted_rows:
+        enriched = dict(row)
+        enriched["criterion_text_ai"] = normalize_criterion_text_with_ai(
+            enriched.get("criterion_text", ""),
+            client=client,
+            model=model,
+        )
+        normalized_rows.append(enriched)
+
+    return normalized_rows
 
 
 def extract_raw_criteria_from_workbook(path: str, class_code: str) -> list[dict]:
