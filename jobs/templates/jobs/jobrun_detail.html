@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Job run {{ job_run.id }}</title>
+</head>
+<body>
+  <h1>Job run details</h1>
+
+  <p><strong>ID:</strong> {{ job_run.id }}</p>
+  <p><strong>Job type:</strong> {{ job_run.job_type }}</p>
+  <p><strong>Status:</strong> {{ job_run.get_status_display }}</p>
+  <p><strong>Started at:</strong> {{ job_run.started_at|default:"—" }}</p>
+  <p><strong>Finished at:</strong> {{ job_run.finished_at|default:"—" }}</p>
+
+  <p><a href="{% url 'job_run_list' %}">Back to list</a></p>
+</body>
+</html>

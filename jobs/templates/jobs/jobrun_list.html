@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Job runs</title>
+</head>
+<body>
+  <h1>Запуски</h1>
+
+  <form method="get">
+    <label>
+      Status:
+      <select name="status">
+        <option value="">All</option>
+        {% for value, label in status_choices %}
+          <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      Job type:
+      <select name="job_type">
+        <option value="">All</option>
+        {% for jt in job_type_choices %}
+          <option value="{{ jt }}" {% if filters.job_type == jt %}selected{% endif %}>{{ jt }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      Started from:
+      <input type="date" name="started_from" value="{{ filters.started_from }}">
+    </label>
+
+    <label>
+      Started to:
+      <input type="date" name="started_to" value="{{ filters.started_to }}">
+    </label>
+
+    <button type="submit">Apply</button>
+    <a href="{% url 'job_run_list' %}">Reset</a>
+  </form>
+
+  <table border="1" cellpadding="6" cellspacing="0">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Job type</th>
+        <th>Status</th>
+        <th>Started at</th>
+        <th>Finished at</th>
+        <th>Details</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for run in page_obj %}
+        <tr>
+          <td>{{ run.id }}</td>
+          <td>{{ run.job_type }}</td>
+          <td>{{ run.get_status_display }}</td>
+          <td>{{ run.started_at|default:"—" }}</td>
+          <td>{{ run.finished_at|default:"—" }}</td>
+          <td>
+            <a href="{% url 'job_run_detail' run.id %}{% if querystring %}?{{ querystring }}{% endif %}">Open</a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="6">No runs found.</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if page_obj.paginator.num_pages > 1 %}
+    <nav>
+      {% if page_obj.has_previous %}
+        <a href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
+      {% endif %}
+
+      <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+
+      {% if page_obj.has_next %}
+        <a href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.next_page_number }}">Next</a>
+      {% endif %}
+    </nav>
+  {% endif %}
+</body>
+</html>
