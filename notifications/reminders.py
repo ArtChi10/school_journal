@@ -1,18 +1,14 @@
 from collections import defaultdict
 
 from jobs.models import JobLog, JobRun
+from jobs.services import log_step
 
 from .models import TeacherContact
 from .services import TelegramSendError, send_telegram
 
 
 def _log(job_run: JobRun, level: str, message: str, context: dict | None = None) -> None:
-    JobLog.objects.create(
-        job_run=job_run,
-        level=level,
-        message=message,
-        context_json=context or {},
-    )
+    log_step(job_run=job_run, level=level, message=message, context=context)
 
 
 def _teacher_name_candidates(sheet_name: str) -> list[str]:

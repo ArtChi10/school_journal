@@ -3,6 +3,7 @@ from django.utils import timezone
 
 from validation.services import validate_workbook
 from .models import JobLog, JobRun
+from .services import log_step
 from notifications.reminders import send_validation_reminders_for_job
 
 
@@ -23,7 +24,7 @@ class JobRunAdmin(admin.ModelAdmin):
             source_path = (job.params_json or {}).get("source")
             if not source_path:
                 failed += 1
-                JobLog.objects.create(
+                log_step(
                     job_run=job,
                     level=JobLog.Level.ERROR,
                     message="Validation source is missing in params_json['source']",
@@ -34,7 +35,7 @@ class JobRunAdmin(admin.ModelAdmin):
                 job.status = JobRun.Status.RUNNING
                 job.started_at = timezone.now()
                 job.save(update_fields=["status", "started_at"])
-                JobLog.objects.create(
+                log_step(
                     job_run=job,
                     level=JobLog.Level.INFO,
                     message=f"Validation started. source={source_path}",
@@ -46,11 +47,11 @@ class JobRunAdmin(admin.ModelAdmin):
                 job.finished_at = timezone.now()
                 job.save(update_fields=["result_json", "status", "finished_at"])
 
-                JobLog.objects.create(
+                log_step(
                     job_run=job,
                     level=JobLog.Level.INFO,
                     message="Validation finished",
-                    context_json=result.get("summary", {}),
+                    context=result.get("summary", {}),
                 )
                 processed += 1
             except Exception as exc:
@@ -58,7 +59,7 @@ class JobRunAdmin(admin.ModelAdmin):
                 job.status = JobRun.Status.FAILED
                 job.finished_at = timezone.now()
                 job.save(update_fields=["status", "finished_at"])
-                JobLog.objects.create(
+                log_step(
                     job_run=job,
                     level=JobLog.Level.ERROR,
                     message=f"Validation failed: {exc}",
