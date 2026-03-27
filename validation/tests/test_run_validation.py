@@ -1,3 +1,4 @@
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -9,7 +10,7 @@ from openpyxl import Workbook
 
 from jobs.models import JobRun
 from journal_links.models import ClassSheetLink
-from validation.job_runner import run_validation_job
+from validation.job_runner import fetch_workbook_for_link, run_validation_job
 
 ALLOWED_DESCRIPTOR = "Выполняет самостоятельно | Independent"
 
@@ -34,6 +35,53 @@ def _build_valid_workbook(path: Path) -> None:
     ws.cell(row=7, column=6, value="no")
 
     wb.save(path)
+
+class FetchWorkbookAccessModeTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.link = ClassSheetLink.objects.create(
+            class_code="4A",
+            subject_name="Math",
+            teacher_name="Teacher",
+            google_sheet_url="https://docs.google.com/spreadsheets/d/abc123/edit#gid=0",
+            is_active=True,
+        )
+
+    def test_fetch_workbook_uses_oauth_owner_mode(self):
+        with patch.dict(
+            os.environ,
+            {
+                "GOOGLE_ACCESS_MODE": "oauth_owner",
+                "GOOGLE_OAUTH_CLIENT_SECRET_PATH": "/tmp/client_secret.json",
+                "GOOGLE_OAUTH_TOKEN_PATH": "/tmp/token.json",
+            },
+            clear=False,
+        ):
+            with patch("validation.job_runner._download_workbook_oauth_owner") as oauth_mock:
+                oauth_mock.return_value = Path("/tmp/test.xlsx")
+                path = fetch_workbook_for_link(self.link)
+
+        self.assertEqual(path, Path("/tmp/test.xlsx"))
+        oauth_mock.assert_called_once_with(self.link)
+
+    def test_fetch_workbook_oauth_owner_requires_token_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client_secret = Path(tmpdir) / "client_secret.json"
+            client_secret.write_text("{}", encoding="utf-8")
+
+            with patch.dict(
+                os.environ,
+                {
+                    "GOOGLE_ACCESS_MODE": "oauth_owner",
+                    "GOOGLE_OAUTH_CLIENT_SECRET_PATH": str(client_secret),
+                    "GOOGLE_OAUTH_TOKEN_PATH": str(Path(tmpdir) / "missing_token.json"),
+                },
+                clear=False,
+            ):
+                with self.assertRaisesRegex(Exception, "GOOGLE_OAUTH_TOKEN_PATH"):
+                    fetch_workbook_for_link(self.link)
+
+
 
 
 class RunValidationJobTests(TestCase):

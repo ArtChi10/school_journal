@@ -15,7 +15,7 @@ from pipeline.services import (
     normalize_criterion_text_with_ai,
     extract_raw_criteria_from_workbook,
 )
-from validation.job_runner import fetch_workbook_for_link
+from validation.job_runner import fetch_workbook_for_link, get_google_access_mode
 
 
 def _collect_links(link_id: int | None, class_code: str | None, all_active: bool) -> list[ClassSheetLink]:
@@ -79,7 +79,20 @@ def run_build_criteria_job(
                     message="Start processing table",
                     context={"link_id": link.id, "class_code": link.class_code, "subject": link.subject_name},
                 )
+                mode = get_google_access_mode()
+                log_step(
+                    job_run=job_run,
+                    level=JobLog.Level.INFO,
+                    message="Fetching workbook",
+                    context={"link_id": link.id, "class_code": link.class_code, "access_mode": mode},
+                )
                 temp_file = fetch_workbook_for_link(link)
+                log_step(
+                    job_run=job_run,
+                    level=JobLog.Level.DEBUG,
+                    message="Workbook downloaded",
+                    context={"link_id": link.id, "path": str(temp_file), "access_mode": mode},
+                )
                 rows = extract_raw_criteria_from_workbook(str(temp_file), class_code=link.class_code)
                 total_criteria += len(rows)
 

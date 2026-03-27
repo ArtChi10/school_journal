@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import os
 import re
 import tempfile
 from pathlib import Path
@@ -14,7 +14,24 @@ from journal_links.models import ClassSheetLink
 from validation.services import validate_workbook
 
 _GOOGLE_SHEET_RE = re.compile(r"/spreadsheets/d/([a-zA-Z0-9-_]+)")
+GOOGLE_ACCESS_MODE_PUBLIC = "public_link"
+GOOGLE_ACCESS_MODE_OAUTH_OWNER = "oauth_owner"
+GOOGLE_ACCESS_MODE_DEFAULT = GOOGLE_ACCESS_MODE_PUBLIC
+GOOGLE_OAUTH_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 
+
+class GoogleWorkbookAccessError(RuntimeError):
+    """Raised when workbook download from Google Drive/Sheets fails."""
+
+
+def get_google_access_mode() -> str:
+    mode = os.getenv("GOOGLE_ACCESS_MODE", GOOGLE_ACCESS_MODE_DEFAULT).strip().lower()
+    if mode not in {GOOGLE_ACCESS_MODE_PUBLIC, GOOGLE_ACCESS_MODE_OAUTH_OWNER}:
+        raise GoogleWorkbookAccessError(
+            "Invalid GOOGLE_ACCESS_MODE value "
+            f"'{mode}'. Allowed: {GOOGLE_ACCESS_MODE_PUBLIC}|{GOOGLE_ACCESS_MODE_OAUTH_OWNER}."
+        )
+    return mode
 
 def _extract_google_sheet_file_id(url: str) -> str | None:
     match = _GOOGLE_SHEET_RE.search(url or "")
