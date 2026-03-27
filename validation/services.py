@@ -1,7 +1,11 @@
+import logging
+from zipfile import BadZipFile
 from dataclasses import asdict, dataclass
 from typing import Any
 
 from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
+
 
 from .rules import (
     ALLOWED_DESCRIPTOR_VALUES,
@@ -23,13 +27,27 @@ class ValidationIssue:
     field: str | None
     message: str
 
+class WorkbookReadError(ValueError):
+    """Raised when a workbook cannot be read for validation."""
+
+
+logger = logging.getLogger(__name__)
 
 def _is_empty(v: Any) -> bool:
     return v is None or str(v).strip() == ""
 
 
 def validate_workbook(path: str) -> dict:
-    wb = load_workbook(path, data_only=True)
+    try:
+        wb = load_workbook(path, data_only=True)
+    except (FileNotFoundError, InvalidFileException, BadZipFile, OSError) as exc:
+        logger.error(
+            "Failed to read workbook for validation: %s (%s)",
+            path,
+            exc.__class__.__name__,
+        )
+        raise WorkbookReadError(f"Cannot read workbook: {path}") from exc
+
     issues: list[ValidationIssue] = []
 
     for sheet_name in wb.sheetnames:
