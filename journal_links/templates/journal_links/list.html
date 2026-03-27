@@ -35,6 +35,10 @@
           <td>
             <a href="{% url 'journal_links:edit_link' link.id %}">Edit</a>
             {% if link.is_active %}
+            <form action="{% url 'journal_links:run_link_validation' link.id %}" method="post" style="display:inline;">
+                {% csrf_token %}
+                <button type="submit">Проверить заполненность</button>
+              </form>
               <form action="{% url 'journal_links:disable_link' link.id %}" method="post" style="display:inline;">
                 {% csrf_token %}
                 <button type="submit">Disable</button>

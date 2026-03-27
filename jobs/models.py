@@ -8,6 +8,7 @@ class JobRun(models.Model):
         PENDING = "pending", "Pending"
         RUNNING = "running", "Running"
         SUCCESS = "success", "Success"
+        PARTIAL = "partial", "Partial"
         FAILED = "failed", "Failed"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
