@@ -87,7 +87,7 @@ def send_validation_reminders_for_job(job_run: JobRun) -> dict:
         text = "\n".join(lines)
 
         try:
-            send_telegram(contact.chat_id, text, retries=1)
+            send_telegram(contact.chat_id, text, retries=1, job_run_id=job_run.id)
             sent += 1
             _log(
                 job_run,
