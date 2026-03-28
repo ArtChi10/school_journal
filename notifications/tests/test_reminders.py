@@ -4,7 +4,7 @@ from django.core.management import call_command
 from django.test import TestCase
 
 from jobs.models import JobLog, JobRun
-from notifications.models import TeacherContact
+from notifications.models import NotificationEvent, TeacherContact
 from notifications.reminders import send_validation_reminders_for_job
 from notifications.services import TelegramSendError
 
@@ -83,6 +83,22 @@ class SendValidationRemindersTests(TestCase):
         self.assertIn("Reminder sent to Teacher A", log_messages)
         self.assertIn("Reminder skipped for Teacher B: no_contact", log_messages)
         self.assertIn("ADMIN_LOG_CHAT_ID is not configured; admin summary skipped", log_messages)
+        self.assertEqual(NotificationEvent.objects.filter(job_run=self.job_run).count(), 4)
+        self.assertTrue(
+            NotificationEvent.objects.filter(
+                job_run=self.job_run,
+                teacher_name="Teacher A",
+                status=NotificationEvent.Status.SENT,
+                channel=NotificationEvent.Channel.TELEGRAM,
+            ).exists()
+        )
+        self.assertTrue(
+            NotificationEvent.objects.filter(
+                job_run=self.job_run,
+                teacher_name="Teacher B",
+                status=NotificationEvent.Status.SKIPPED,
+            ).exists()
+        )
 
     @patch("notifications.reminders.send_telegram", side_effect=TelegramSendError("boom"))
     def test_logs_errors_when_telegram_fails(self, _send_telegram_mock):
@@ -96,6 +112,22 @@ class SendValidationRemindersTests(TestCase):
         error_log = JobLog.objects.filter(job_run=self.job_run, level=JobLog.Level.ERROR).first()
         self.assertIsNotNone(error_log)
         self.assertIn("Failed reminder for Teacher A", error_log.message)
+        self.assertTrue(
+            NotificationEvent.objects.filter(
+                job_run=self.job_run,
+                teacher_name="Teacher A",
+                status=NotificationEvent.Status.ERROR,
+            ).exists()
+        )
+
+    @patch("notifications.reminders.send_telegram")
+    def test_can_filter_notification_events_by_job_run_and_teacher_name(self, _send_telegram_mock):
+        TeacherContact.objects.create(name="Teacher A", chat_id="111", is_active=True)
+        send_validation_reminders_for_job(self.job_run)
+
+        filtered = NotificationEvent.objects.filter(job_run=self.job_run, teacher_name="Teacher A")
+        self.assertEqual(filtered.count(), 1)
+        self.assertEqual(filtered.first().status, NotificationEvent.Status.SENT)
 
     @patch("notifications.reminders.send_telegram")
     def test_sends_admin_summary_when_configured(self, send_telegram_mock):

@@ -1,10 +1,13 @@
 from collections import Counter, defaultdict
+import hashlib
+import json
 from django.conf import settings
+from django.utils import timezone
 
 from jobs.models import JobLog, JobRun
 from jobs.services import log_step
 
-from .models import TeacherContact
+from .models import NotificationEvent, TeacherContact
 from .services import TelegramSendError, send_telegram
 
 TOP_PROBLEMS_LIMIT = 5
@@ -190,6 +193,30 @@ def _resolve_contact(teacher_name: str) -> tuple[TeacherContact | None, str | No
         return None, "no_chat_id"
     return contact, None
 
+def _payload_hash(teacher_name: str, teacher_issues: list[dict], text: str = "") -> str:
+    serialized_issues = json.dumps(teacher_issues, ensure_ascii=False, sort_keys=True, default=str)
+    payload = f"{teacher_name}|{serialized_issues}|{text}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _record_notification_event(
+    job_run: JobRun,
+    *,
+    teacher_name: str,
+    status: str,
+    payload_hash: str,
+) -> None:
+    NotificationEvent.objects.create(
+        job_run=job_run,
+        teacher_name=teacher_name,
+        channel=NotificationEvent.Channel.TELEGRAM,
+        status=status,
+        sent_at=timezone.now(),
+        payload_hash=payload_hash,
+    )
+
+
+
 
 def send_validation_reminders_for_job(job_run: JobRun) -> dict:
     issues = (job_run.result_json or {}).get("issues", [])
@@ -218,6 +245,13 @@ def send_validation_reminders_for_job(job_run: JobRun) -> dict:
         contact, skip_reason = _resolve_contact(teacher_name)
 
         if skip_reason:
+            event_payload_hash = _payload_hash(teacher_name, teacher_issues)
+            _record_notification_event(
+                job_run,
+                teacher_name=teacher_name,
+                status=NotificationEvent.Status.SKIPPED,
+                payload_hash=event_payload_hash,
+            )
             skipped += 1
             _log(
                 job_run,
@@ -232,9 +266,16 @@ def send_validation_reminders_for_job(job_run: JobRun) -> dict:
             continue
 
         text = _build_teacher_message(teacher_name, teacher_issues)
+        event_payload_hash = _payload_hash(teacher_name, teacher_issues, text)
 
         try:
             send_telegram(contact.chat_id, text, retries=1, job_run_id=job_run.id)
+            _record_notification_event(
+                job_run,
+                teacher_name=teacher_name,
+                status=NotificationEvent.Status.SENT,
+                payload_hash=event_payload_hash,
+            )
             sent += 1
             _log(
                 job_run,
@@ -247,6 +288,12 @@ def send_validation_reminders_for_job(job_run: JobRun) -> dict:
                 },
             )
         except TelegramSendError as exc:
+            _record_notification_event(
+                job_run,
+                teacher_name=teacher_name,
+                status=NotificationEvent.Status.ERROR,
+                payload_hash=event_payload_hash,
+            )
             errors += 1
             _log(
                 job_run,

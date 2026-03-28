@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import TeacherConfirmation, TeacherContact
+from .models import NotificationEvent, TeacherConfirmation, TeacherContact
 
 
 @admin.register(TeacherContact)
@@ -17,3 +17,11 @@ class TeacherConfirmationAdmin(admin.ModelAdmin):
     list_filter = ("status", "confirmed_at")
     search_fields = ("teacher_name", "chat_id", "job_run__id")
     readonly_fields = ("confirmed_at",)
+
+
+@admin.register(NotificationEvent)
+class NotificationEventAdmin(admin.ModelAdmin):
+    list_display = ("teacher_name", "job_run", "channel", "status", "sent_at")
+    list_filter = ("channel", "status", "sent_at")
+    search_fields = ("teacher_name", "job_run__id", "payload_hash")
+    readonly_fields = ("sent_at", "payload_hash")

@@ -45,3 +45,37 @@ class TeacherConfirmation(models.Model):
 
     def __str__(self) -> str:
         return f"{self.teacher_name} -> {self.job_run_id} ({self.status})"
+
+
+class NotificationEvent(models.Model):
+    class Channel(models.TextChoices):
+        TELEGRAM = "telegram", "Telegram"
+        EMAIL = "email", "Email"
+
+    class Status(models.TextChoices):
+        SENT = "sent", "Sent"
+        SKIPPED = "skipped", "Skipped"
+        ERROR = "error", "Error"
+
+    job_run = models.ForeignKey(
+        "jobs.JobRun",
+        on_delete=models.CASCADE,
+        related_name="notification_events",
+    )
+    teacher_name = models.CharField(max_length=255)
+    channel = models.CharField(max_length=20, choices=Channel.choices, default=Channel.TELEGRAM)
+    status = models.CharField(max_length=20, choices=Status.choices)
+    sent_at = models.DateTimeField(auto_now_add=True)
+    payload_hash = models.CharField(max_length=64)
+
+    class Meta:
+        ordering = ["-sent_at"]
+        indexes = [
+            models.Index(fields=["job_run", "teacher_name"]),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.teacher_name} -> {self.job_run_id} "
+            f"[{self.channel}:{self.status}]"
+        )
