@@ -58,6 +58,7 @@ def list_job_runs(request):
 def job_run_detail(request, run_id):
     job_run = get_object_or_404(JobRun.objects.select_related("initiated_by"), id=run_id)
     logs = job_run.logs.all().order_by("ts")
+    confirmations = job_run.teacher_confirmations.all().order_by("-confirmed_at")
 
     summary_payload = None
     if isinstance(job_run.result_json, dict):
@@ -73,5 +74,6 @@ def job_run_detail(request, run_id):
             "logs": logs,
             "back_query": request.GET.urlencode(),
             "result_summary": summary_payload,
+            "confirmations": confirmations,
         },
     )

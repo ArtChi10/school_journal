@@ -11,6 +11,7 @@
 
     .summary-card,
     .result-summary,
+    .confirmations-block,
     .logs-block {
       border: 1px solid #ddd;
       border-radius: 8px;
@@ -107,6 +108,35 @@
       </table>
     </section>
   {% endif %}
+    <section class="confirmations-block">
+    <h2>Подтверждения учителей</h2>
+    <table class="logs-table">
+      <thead>
+        <tr>
+          <th>Когда</th>
+          <th>Учитель</th>
+          <th>Chat ID</th>
+          <th>Статус</th>
+          <th>Сообщение</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for confirmation in confirmations %}
+          <tr>
+            <td>{{ confirmation.confirmed_at }}</td>
+            <td>{{ confirmation.teacher_name }}</td>
+            <td>{{ confirmation.chat_id }}</td>
+            <td>{{ confirmation.status }}</td>
+            <td>{{ confirmation.message_text }}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="5" class="muted">Подтверждений пока нет.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
 
   <section class="logs-block">
     <h2>Timeline logs</h2>
