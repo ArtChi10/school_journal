@@ -53,7 +53,9 @@ class BuildCriteriaJobTests(TestCase):
                 return f"AI::{text}"
 
             with (
-                patch("pipeline.job_runner.fetch_workbook_for_link", return_value=workbook_path),
+                patch("pipeline.job_runner.run_download_descriptors_step",
+                      return_value={"downloads_total":1,"downloads_success":1,"downloads_failed":0,
+                                    "files":[{"link_id":1,"status":"success","path":str(workbook_path),"size_bytes":123}]}),
                 patch("pipeline.job_runner.normalize_criterion_text_with_ai", side_effect=_fake_ai),
             ):
                 job = run_build_criteria_job(class_code="4A")
@@ -86,7 +88,10 @@ class BuildCriteriaJobTests(TestCase):
             )
 
             with (
-                patch("pipeline.job_runner.fetch_workbook_for_link", return_value=workbook_path),
+                patch("pipeline.job_runner.run_download_descriptors_step",
+                      return_value={"downloads_total":1,"downloads_success":1,
+                                    "downloads_failed":0,"files":[{"link_id":1,"status":"success",
+                                                                   "path":str(workbook_path),"size_bytes":123}]}),
                 patch("pipeline.job_runner.normalize_criterion_text_with_ai", return_value="AI"),
             ):
                 call_command("build_criteria_table", "--class-code", "4A")

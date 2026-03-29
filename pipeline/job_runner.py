@@ -12,10 +12,10 @@ from pipeline.models import CriterionEntry
 from pipeline.services import (
     CriterionNormalizationError,
     WorkbookReadError,
-    normalize_criterion_text_with_ai,
     extract_raw_criteria_from_workbook,
+    normalize_criterion_text_with_ai,
 )
-from validation.job_runner import fetch_workbook_for_link, get_google_access_mode
+from pipeline.services_download import run_download_descriptors_step
 
 
 def _collect_links(link_id: int | None, class_code: str | None, all_active: bool) -> list[ClassSheetLink]:
@@ -70,8 +70,20 @@ def run_build_criteria_job(
     tables_failed = 0
 
     try:
+        download_result = run_download_descriptors_step(links=links, job_run=job_run)
+        downloaded = {
+            item["link_id"]: item
+            for item in download_result.get("files", [])
+            if item.get("status") == "success"
+        }
+        tables_failed += download_result.get("downloads_failed", 0)
+
         for link in links:
-            temp_file: Path | None = None
+            downloaded_item = downloaded.get(link.id)
+            if not downloaded_item:
+                continue
+
+            temp_file = Path(downloaded_item["path"])
             try:
                 log_step(
                     job_run=job_run,
@@ -79,20 +91,7 @@ def run_build_criteria_job(
                     message="Start processing table",
                     context={"link_id": link.id, "class_code": link.class_code, "subject": link.subject_name},
                 )
-                mode = get_google_access_mode()
-                log_step(
-                    job_run=job_run,
-                    level=JobLog.Level.INFO,
-                    message="Fetching workbook",
-                    context={"link_id": link.id, "class_code": link.class_code, "access_mode": mode},
-                )
-                temp_file = fetch_workbook_for_link(link)
-                log_step(
-                    job_run=job_run,
-                    level=JobLog.Level.DEBUG,
-                    message="Workbook downloaded",
-                    context={"link_id": link.id, "path": str(temp_file), "access_mode": mode},
-                )
+
                 rows = extract_raw_criteria_from_workbook(str(temp_file), class_code=link.class_code)
                 total_criteria += len(rows)
 
@@ -149,7 +148,7 @@ def run_build_criteria_job(
                     context={"link_id": link.id, "class_code": link.class_code},
                 )
             finally:
-                if temp_file and temp_file.exists():
+                if temp_file.exists():
                     temp_file.unlink(missing_ok=True)
 
         summary = {
@@ -157,6 +156,9 @@ def run_build_criteria_job(
             "total_criteria": total_criteria,
             "ai_ok": ai_ok,
             "ai_failed": ai_failed,
+            "downloads_total": download_result.get("downloads_total", 0),
+            "downloads_success": download_result.get("downloads_success", 0),
+            "downloads_failed": download_result.get("downloads_failed", 0),
         }
 
         if not links or (total_criteria == 0 and tables_failed > 0):
@@ -171,6 +173,7 @@ def run_build_criteria_job(
             "links_total": len(links),
             "links_failed": tables_failed,
             "rows_upserted": updated_rows,
+            "downloads": download_result,
         }
         job_run.status = final_status
         job_run.finished_at = timezone.now()
