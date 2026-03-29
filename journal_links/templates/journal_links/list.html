@@ -7,8 +7,7 @@
 <body>
    <h1>Классы и таблицы</h1>
 
-  <p><a href="{% url 'journal_links:create_link' %}">Добавить ссылку</a> · <a href="{% url 'pipeline:criteria_table' %}">Таблица критериев</a></p>
-
+  <p>{% if perms.journal_links.add_classsheetlink %}<a href="{% url 'journal_links:create_link' %}">Добавить ссылку</a> · {% endif %}<a href="{% url 'pipeline:criteria_table' %}">Таблица критериев</a></p>
   <table border="1" cellpadding="6" cellspacing="0">
     <thead>
       <tr>
@@ -33,16 +32,16 @@
           <td>{{ link.is_active }}</td>
           <td>{{ link.updated_at }}</td>
           <td>
-             <a href="{% url 'journal_links:edit_link' link.id %}">Редактировать</a>
+             {% if perms.journal_links.change_classsheetlink %}<a href="{% url 'journal_links:edit_link' link.id %}">Редактировать</a>{% endif %}
             {% if link.is_active %}
-            <form action="{% url 'journal_links:run_link_validation' link.id %}" method="post" style="display:inline;">
+            {% if perms.jobs.run_validation %}<form action="{% url 'journal_links:run_link_validation' link.id %}" method="post" style="display:inline;">
                 {% csrf_token %}
                 <button type="submit">Проверить заполненность</button>
-              </form>
-              <form action="{% url 'journal_links:disable_link' link.id %}" method="post" style="display:inline;">
+              </form>{% endif %}
+              {% if perms.journal_links.change_classsheetlink %}<form action="{% url 'journal_links:disable_link' link.id %}" method="post" style="display:inline;">
                 {% csrf_token %}
                 <button type="submit">Отключить</button>
-              </form>
+              </form>{% endif %}
             {% endif %}
           </td>
         </tr>

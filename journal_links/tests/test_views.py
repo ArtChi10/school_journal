@@ -1,6 +1,6 @@
 from unittest.mock import patch
 from uuid import uuid4
-
+from django.contrib.auth.models import Permission, User
 from django.test import TestCase
 from django.urls import reverse
 
@@ -10,6 +10,9 @@ from journal_links.models import ClassSheetLink
 
 class JournalLinkViewsTests(TestCase):
     def setUp(self):
+        self.user = User.objects.create_user(username="u", password="p")
+        self.user.user_permissions.add(Permission.objects.get(codename="run_validation"))
+        self.client.force_login(self.user)
         self.link = ClassSheetLink.objects.create(
             class_code="7B",
             subject_name="Science",
@@ -25,4 +28,4 @@ class JournalLinkViewsTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse("job_run_detail", kwargs={"run_id": fake_job.id}))
-        mocked.assert_called_once_with(link_id=self.link.id, initiated_by=None)
+        mocked.assert_called_once_with(link_id=self.link.id, initiated_by=self.user)

@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.urls import include, path
-from jobs.views import job_run_detail, list_job_runs, run_full_pipeline_view
+from jobs.views import job_run_detail, list_job_runs, run_full_pipeline_view, send_reminders_view
 from notifications.views import telegram_webhook
 
 urlpatterns = [
@@ -11,4 +11,5 @@ urlpatterns = [
     path("runs/", list_job_runs, name="job_run_list"),
     path("runs/full-pipeline/start/", run_full_pipeline_view, name="run_full_pipeline"),
     path("runs/<uuid:run_id>/", job_run_detail, name="job_run_detail"),
+    path("runs/<uuid:run_id>/send-reminders/", send_reminders_view, name="send_reminders"),
 ]

@@ -1,4 +1,5 @@
 from django.contrib import admin, messages
+from django.core.exceptions import PermissionDenied
 from django.utils import timezone
 
 from validation.services import validate_workbook
@@ -17,6 +18,8 @@ class JobRunAdmin(admin.ModelAdmin):
 
     @admin.action(description="Run validation for selected jobs")
     def run_validation_action(self, request, queryset):
+        if not request.user.has_perm("jobs.run_validation"):
+            raise PermissionDenied("Недостаточно прав для запуска валидации")
         processed = 0
         failed = 0
 
@@ -73,6 +76,8 @@ class JobRunAdmin(admin.ModelAdmin):
 
     @admin.action(description="Send Telegram reminders for selected jobs")
     def send_telegram_reminders_action(self, request, queryset):
+        if not request.user.has_perm("jobs.send_reminders"):
+            raise PermissionDenied("Недостаточно прав для отправки напоминаний")
         total_sent = 0
         total_skipped = 0
         total_errors = 0

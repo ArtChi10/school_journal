@@ -1,5 +1,6 @@
 import uuid
 from unittest.mock import patch
+from django.contrib.auth.models import Permission, User
 from django.test import TestCase
 from django.urls import reverse
 
@@ -8,6 +9,10 @@ from notifications.models import TeacherConfirmation
 
 
 class JobRunDetailViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="vp", password="p")
+        self.user.user_permissions.add(Permission.objects.get(codename="view_jobrun"))
+        self.client.force_login(self.user)
     def test_detail_shows_teacher_confirmations(self):
         job_run = JobRun.objects.create(job_type="run_validation")
         TeacherConfirmation.objects.create(
@@ -54,6 +59,11 @@ class JobRunDetailViewTests(TestCase):
 
 
 class RunFullPipelineViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="admin", password="p")
+        for codename in ("view_jobrun", "run_full_pipeline"):
+            self.user.user_permissions.add(Permission.objects.get(codename=codename))
+        self.client.force_login(self.user)
     @patch("jobs.views.run_full_pipeline")
     def test_post_runs_pipeline_and_redirects_to_detail(self, mocked_runner):
         fake_job = JobRun(id=uuid.uuid4())

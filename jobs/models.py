@@ -28,6 +28,11 @@ class JobRun(models.Model):
 
     class Meta:
         ordering = ["-started_at"]
+        permissions = [
+            ("run_validation", "Can run validation jobs"),
+            ("run_full_pipeline", "Can run full pipeline"),
+            ("send_reminders", "Can send validation reminders"),
+        ]
 
     def __str__(self) -> str:
         return f"{self.job_type} ({self.status})"

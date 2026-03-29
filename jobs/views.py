@@ -1,7 +1,11 @@
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, redirect, render
 
 from django.views.decorators.http import require_POST
+from admin_panel.authz import permission_required_403
+from notifications.reminders import send_validation_reminders_for_job
 
 from pipeline.full_pipeline_runner import run_full_pipeline
 
@@ -107,7 +111,8 @@ def _resolve_problem_step(step_rows):
             return step
     return None
 
-
+@login_required
+@permission_required_403("jobs.view_jobrun", message="Доступ запрещён: нет прав на просмотр запусков.")
 def list_job_runs(request):
     queryset = JobRun.objects.all().order_by("-started_at")
 
@@ -152,7 +157,8 @@ def list_job_runs(request):
         },
     )
 
-
+@login_required
+@permission_required_403("jobs.view_jobrun", message="Доступ запрещён: нет прав на просмотр запуска.")
 def job_run_detail(request, run_id):
     job_run = get_object_or_404(JobRun.objects.select_related("initiated_by"), id=run_id)
     logs = list(job_run.logs.all().order_by("ts"))
@@ -198,8 +204,24 @@ def job_run_detail(request, run_id):
             "confirmations": confirmations,
         },
     )
-
+@login_required
 @require_POST
+@permission_required_403("jobs.run_full_pipeline", message="Доступ запрещён: нельзя запускать полный пайплайн.")
 def run_full_pipeline_view(request):
     job_run = run_full_pipeline(initiated_by=request.user if request.user.is_authenticated else None)
+    return redirect("job_run_detail", run_id=job_run.id)
+
+@login_required
+@require_POST
+@permission_required_403("jobs.send_reminders", message="Доступ запрещён: нельзя отправлять напоминания.")
+def send_reminders_view(request, run_id):
+    job_run = get_object_or_404(JobRun, id=run_id)
+    result = send_validation_reminders_for_job(job_run)
+    messages.success(
+        request,
+        (
+            "Напоминания отправлены. "
+            f"sent={result.get('sent', 0)}, skipped={result.get('skipped', 0)}, errors={result.get('errors', 0)}"
+        ),
+    )
     return redirect("job_run_detail", run_id=job_run.id)

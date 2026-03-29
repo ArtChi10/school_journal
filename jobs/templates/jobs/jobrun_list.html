@@ -28,10 +28,12 @@
 </head>
 <body>
   <h1>Запуски</h1>
+  {% if perms.jobs.run_full_pipeline %}
   <form method="post" action="{% url 'run_full_pipeline' %}" style="margin: 12px 0;">
     {% csrf_token %}
     <button type="submit">Запустить полный пайплайн</button>
   </form>
+  {% endif %}
   <form method="get">
     <label>
       Status:

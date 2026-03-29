@@ -33,7 +33,13 @@
     <a href="{% url 'job_run_list' %}{% if back_query %}?{{ back_query }}{% endif %}">← Назад к списку</a>
   </p>
 
-  <h1>Детали запуска</h1>
+  {% if perms.jobs.send_reminders %}
+  <form method="post" action="{% url 'send_reminders' job_run.id %}" style="margin: 10px 0;">
+    {% csrf_token %}
+    <button type="submit">Отправить напоминания учителям</button>
+  </form>
+{% endif %}
+<h1>Детали запуска</h1>
 
   <section class="summary-card">
     <h2>Summary</h2>
