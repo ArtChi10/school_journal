@@ -193,10 +193,31 @@ def _resolve_contact(teacher_name: str) -> tuple[TeacherContact | None, str | No
         return None, "no_chat_id"
     return contact, None
 
-def _payload_hash(teacher_name: str, teacher_issues: list[dict], text: str = "") -> str:
-    serialized_issues = json.dumps(teacher_issues, ensure_ascii=False, sort_keys=True, default=str)
-    payload = f"{teacher_name}|{serialized_issues}|{text}"
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+def _normalize_issues_for_hash(teacher_issues: list[dict]) -> list[dict]:
+    normalized: list[dict] = []
+    for issue in teacher_issues:
+        normalized.append({key: issue[key] for key in sorted(issue)})
+    normalized.sort(
+        key=lambda issue: json.dumps(issue, ensure_ascii=False, sort_keys=True, default=str),
+    )
+    return normalized
+
+
+def _payload_hash(teacher_issues: list[dict]) -> str:
+    normalized_issues = _normalize_issues_for_hash(teacher_issues)
+    serialized_issues = json.dumps(normalized_issues, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(serialized_issues.encode("utf-8")).hexdigest()
+
+
+def _was_already_sent(job_run: JobRun, *, teacher_name: str, payload_hash: str) -> bool:
+    return NotificationEvent.objects.filter(
+        job_run=job_run,
+        teacher_name=teacher_name,
+        channel=NotificationEvent.Channel.TELEGRAM,
+        payload_hash=payload_hash,
+        status=NotificationEvent.Status.SENT,
+    ).exists()
 
 
 def _record_notification_event(
@@ -245,7 +266,7 @@ def send_validation_reminders_for_job(job_run: JobRun) -> dict:
         contact, skip_reason = _resolve_contact(teacher_name)
 
         if skip_reason:
-            event_payload_hash = _payload_hash(teacher_name, teacher_issues)
+            event_payload_hash = _payload_hash(teacher_issues)
             _record_notification_event(
                 job_run,
                 teacher_name=teacher_name,
@@ -266,7 +287,26 @@ def send_validation_reminders_for_job(job_run: JobRun) -> dict:
             continue
 
         text = _build_teacher_message(teacher_name, teacher_issues)
-        event_payload_hash = _payload_hash(teacher_name, teacher_issues, text)
+        event_payload_hash = _payload_hash(teacher_issues)
+        if _was_already_sent(job_run, teacher_name=teacher_name, payload_hash=event_payload_hash):
+            _record_notification_event(
+                job_run,
+                teacher_name=teacher_name,
+                status=NotificationEvent.Status.SKIPPED,
+                payload_hash=event_payload_hash,
+            )
+            skipped += 1
+            _log(
+                job_run,
+                JobLog.Level.INFO,
+                f"Reminder skipped for {teacher_name}: skipped_duplicate",
+                {
+                    "teacher": teacher_name,
+                    "reason": "skipped_duplicate",
+                    "issues_count": len(teacher_issues),
+                },
+            )
+            continue
 
         try:
             send_telegram(contact.chat_id, text, retries=1, job_run_id=job_run.id)

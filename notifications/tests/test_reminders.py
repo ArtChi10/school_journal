@@ -187,6 +187,67 @@ class SendValidationRemindersTests(TestCase):
         reasons = {log.context_json.get("reason") for log in warnings if log.context_json.get("reason")}
         self.assertEqual(reasons, {"no_contact", "no_chat_id", "inactive"})
 
+    @patch("notifications.reminders.send_telegram")
+    def test_does_not_send_duplicate_reminder_for_same_issues_hash(self, send_telegram_mock):
+        TeacherContact.objects.create(name="Teacher A", chat_id="111", is_active=True)
+
+        first_result = send_validation_reminders_for_job(self.job_run)
+        second_result = send_validation_reminders_for_job(self.job_run)
+
+        self.assertEqual(first_result, {"sent": 1, "skipped": 3, "errors": 0})
+        self.assertEqual(second_result, {"sent": 0, "skipped": 4, "errors": 0})
+        send_telegram_mock.assert_called_once()
+        self.assertTrue(
+            JobLog.objects.filter(
+                job_run=self.job_run,
+                message="Reminder skipped for Teacher A: skipped_duplicate",
+            ).exists()
+        )
+        self.assertEqual(
+            NotificationEvent.objects.filter(
+                job_run=self.job_run,
+                teacher_name="Teacher A",
+                payload_hash=NotificationEvent.objects.filter(
+                    job_run=self.job_run,
+                    teacher_name="Teacher A",
+                    status=NotificationEvent.Status.SENT,
+                )
+                .values_list("payload_hash", flat=True)
+                .first(),
+            ).count(),
+            2,
+        )
+
+    @patch("notifications.reminders.send_telegram")
+    def test_sends_again_when_issues_payload_hash_changes(self, send_telegram_mock):
+        TeacherContact.objects.create(name="Teacher A", chat_id="111", is_active=True)
+
+        send_validation_reminders_for_job(self.job_run)
+        self.job_run.result_json["issues"].append(
+            {
+                "teacher_name": "Teacher A",
+                "class_code": "5A",
+                "subject_name": "Math",
+                "severity": "warning",
+                "message": "Новая ошибка",
+            }
+        )
+        self.job_run.save(update_fields=["result_json"])
+
+        result = send_validation_reminders_for_job(self.job_run)
+
+        self.assertEqual(result["sent"], 1)
+        self.assertEqual(send_telegram_mock.call_count, 2)
+        sent_hashes = list(
+            NotificationEvent.objects.filter(
+                job_run=self.job_run,
+                teacher_name="Teacher A",
+                status=NotificationEvent.Status.SENT,
+            ).values_list("payload_hash", flat=True)
+        )
+        self.assertEqual(len(sent_hashes), 2)
+        self.assertNotEqual(sent_hashes[0], sent_hashes[1])
+
 
 class SendValidationRemindersCommandTests(TestCase):
     @patch("notifications.reminders.send_telegram")
