@@ -25,3 +25,6 @@ creds/**/*.json
 **/service_account*.json
 **/*client_secret*.json
 **/*token*.json
+
+# Runtime logs
+logs/

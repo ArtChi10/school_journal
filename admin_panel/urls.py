@@ -9,9 +9,12 @@ from jobs.views import (
     send_reminders_view,
 )
 from notifications.views import telegram_webhook
+from admin_panel.monitoring_views import healthz, readyz
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("healthz", healthz, name="healthz"),
+    path("readyz", readyz, name="readyz"),
     path("telegram/webhook/", telegram_webhook, name="telegram_webhook"),
     path("", include("journal_links.urls")),
     path("", include("pipeline.urls")),

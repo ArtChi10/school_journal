@@ -21,3 +21,29 @@
 - EduPage (legacy scripts): `EDUPAGE_USERNAME`, `EDUPAGE_PASSWORD`, `EDUPAGE_SCHOOL`, `EDUPAGE_*`
 
 См. полный перечень и дефолты в `.env.example`.
+
+## Healthcheck и мониторинг ошибок
+
+- `GET /healthz` — быстрый liveness-check, всегда отвечает `{"status":"ok"}` при работающем Django.
+- `GET /readyz` — расширенный readiness-check:
+  - проверка доступности БД (`SELECT 1`);
+  - проверка обязательных env из `CRITICAL_ENV_VARS` (через запятую).
+  - при проблемах возвращает `503` и `{"status":"degraded","checks":...}`.
+
+### Где смотреть ошибки
+
+- Общий лог приложения: `APP_LOG_FILE` (по умолчанию `logs/app.log`) — уровни INFO/WARNING/ERROR.
+- Канал ошибок job/pipeline/telegram/validation: `APP_JOB_ERROR_LOG_FILE` (по умолчанию `logs/jobs_errors.log`) — только ERROR.
+- Sentry подключается только через env:
+  - `SENTRY_DSN`
+  - `SENTRY_ENVIRONMENT`
+  - `SENTRY_TRACES_SAMPLE_RATE`
+
+### Как быстро проверить
+
+```bash
+curl -sS http://127.0.0.1:8000/healthz
+curl -sS http://127.0.0.1:8000/readyz
+tail -n 100 logs/app.log
+tail -n 100 logs/jobs_errors.log
+```
