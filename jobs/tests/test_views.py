@@ -3,7 +3,7 @@ from unittest.mock import patch
 from django.test import TestCase
 from django.urls import reverse
 
-from jobs.models import JobRun
+from jobs.models import JobLog, JobRun
 from notifications.models import TeacherConfirmation
 
 
@@ -28,20 +28,29 @@ class JobRunDetailViewTests(TestCase):
     def test_detail_shows_pipeline_sections(self):
         job_run = JobRun.objects.create(
             job_type="run_full_pipeline",
+            status=JobRun.Status.PARTIAL,
             result_json={
                 "summary": {"steps_total": 5},
-                "pipeline_steps": [{"key": "TASK-021", "title": "Download descriptors", "status": "success"}],
+                "pipeline_steps": [{"key": "TASK-021", "title": "Download descriptors", "status": "partial"}],
                 "artifacts": {"xlsx_files": ["/tmp/a.xlsx"]},
-                "errors": [{"step": "TASK-025", "reason": "No contacts"}],
+                "errors": [{"step": "TASK-021", "reason": "403 unauthorized"}],
             },
         )
-
+        JobLog.objects.create(
+            job_run=job_run,
+            level=JobLog.Level.ERROR,
+            message="step_failed",
+            context_json={"step": "TASK-021", "reason": "403 unauthorized"},
+        )
         response = self.client.get(reverse("job_run_detail", kwargs={"run_id": job_run.id}))
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Pipeline steps")
-        self.assertContains(response, "Artifacts")
-        self.assertContains(response, "Errors")
+        self.assertContains(response, "Started at")
+        self.assertContains(response, "Finished at")
+        self.assertContains(response, "Проблемный шаг")
+        self.assertContains(response, "#step-task-021")
+        self.assertContains(response, "403 unauthorized")
 
 
 class RunFullPipelineViewTests(TestCase):
@@ -57,7 +66,10 @@ class RunFullPipelineViewTests(TestCase):
         mocked_runner.assert_called_once()
 
     def test_list_contains_full_pipeline_button(self):
+        JobRun.objects.create(job_type="run_validation", status=JobRun.Status.PENDING)
         response = self.client.get(reverse("job_run_list"))
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Запустить полный пайплайн")
+        self.assertContains(response, "status-queued")
+        self.assertContains(response, "queued")

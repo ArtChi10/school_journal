@@ -7,6 +7,13 @@ from pipeline.full_pipeline_runner import run_full_pipeline
 
 from .models import JobRun
 
+STATUS_UI_META = {
+    JobRun.Status.PENDING: {"css": "queued", "label": "queued"},
+    JobRun.Status.RUNNING: {"css": "running", "label": "running"},
+    JobRun.Status.SUCCESS: {"css": "success", "label": "success"},
+    JobRun.Status.PARTIAL: {"css": "partial", "label": "partial"},
+    JobRun.Status.FAILED: {"css": "failed", "label": "failed"},
+}
 
 def _parse_non_empty(value: str | None) -> str | None:
     if value is None:
@@ -14,6 +21,91 @@ def _parse_non_empty(value: str | None) -> str | None:
 
     trimmed = value.strip()
     return trimmed or None
+
+
+def _status_meta(status: str | None) -> dict[str, str]:
+    return STATUS_UI_META.get(status, {"css": "queued", "label": status or "queued"})
+
+
+def _build_step_rows(job_run: JobRun, logs, pipeline_steps, errors_payload):
+    log_indexes: dict[str, dict[str, dict]] = {}
+    for log in logs:
+        if not isinstance(log.context_json, dict):
+            continue
+        step_key = log.context_json.get("step")
+        if not step_key:
+            continue
+        bucket = log_indexes.setdefault(step_key, {})
+        if log.message == "step_started":
+            bucket["started"] = {"ts": log.ts, "context": log.context_json}
+        elif log.message in {"step_success", "step_failed"}:
+            bucket["finished"] = {
+                "ts": log.ts,
+                "context": log.context_json,
+                "message": log.message,
+                "level": log.level,
+            }
+
+    errors_by_step: dict[str, list[dict]] = {}
+    for error in errors_payload:
+        if isinstance(error, dict) and error.get("step"):
+            errors_by_step.setdefault(error["step"], []).append(error)
+
+    step_rows = []
+    for index, step in enumerate(pipeline_steps):
+        step_key = step.get("key") or f"step-{index + 1}"
+        indexed_logs = log_indexes.get(step_key, {})
+        started_log = indexed_logs.get("started")
+        finished_log = indexed_logs.get("finished")
+        status = step.get("status") or "pending"
+
+        reasons = []
+        if isinstance(step.get("reason"), str) and step.get("reason"):
+            reasons.append(step["reason"])
+
+        if isinstance(finished_log, dict):
+            reason = (finished_log.get("context") or {}).get("reason")
+            if reason:
+                reasons.append(str(reason))
+
+        for payload in errors_by_step.get(step_key, []):
+            reason = payload.get("reason")
+            if reason:
+                reasons.append(str(reason))
+
+        unique_reasons = []
+        for value in reasons:
+            if value not in unique_reasons:
+                unique_reasons.append(value)
+
+        context_details = {
+            "step": step,
+            "error_entries": errors_by_step.get(step_key, []),
+            "start_context": (started_log or {}).get("context", {}),
+            "finish_context": (finished_log or {}).get("context", {}),
+        }
+
+        step_rows.append(
+            {
+                "anchor": f"step-{step_key.lower()}",
+                "key": step_key,
+                "title": step.get("title") or "—",
+                "status": status,
+                "status_meta": _status_meta(status),
+                "started_at": (started_log or {}).get("ts"),
+                "finished_at": (finished_log or {}).get("ts"),
+                "error_reason": " | ".join(unique_reasons),
+                "context_details": context_details,
+            }
+        )
+
+    return step_rows
+
+def _resolve_problem_step(step_rows):
+    for step in step_rows:
+        if step["status"] in {JobRun.Status.PARTIAL, JobRun.Status.FAILED, "partial", "failed"}:
+            return step
+    return None
 
 
 def list_job_runs(request):
@@ -37,6 +129,8 @@ def list_job_runs(request):
 
     paginator = Paginator(queryset, 20)
     page_obj = paginator.get_page(request.GET.get("page"))
+    for run in page_obj:
+        run.status_meta = _status_meta(run.status)
 
     preserved_query = request.GET.copy()
     preserved_query.pop("page", None)
@@ -61,7 +155,7 @@ def list_job_runs(request):
 
 def job_run_detail(request, run_id):
     job_run = get_object_or_404(JobRun.objects.select_related("initiated_by"), id=run_id)
-    logs = job_run.logs.all().order_by("ts")
+    logs = list(job_run.logs.all().order_by("ts"))
     confirmations = job_run.teacher_confirmations.all().order_by("-confirmed_at")
 
     summary_payload = None
@@ -85,15 +179,20 @@ def job_run_detail(request, run_id):
         if isinstance(possible_errors, list):
             errors_payload = possible_errors
 
+    step_rows = _build_step_rows(job_run, logs, pipeline_steps, errors_payload)
+    problem_step = _resolve_problem_step(step_rows)
     return render(
         request,
         "jobs/jobrun_detail.html",
         {
             "job_run": job_run,
+            "job_status_meta": _status_meta(job_run.status),
             "logs": logs,
             "back_query": request.GET.urlencode(),
             "result_summary": summary_payload,
             "pipeline_steps": pipeline_steps,
+            "step_rows": step_rows,
+            "problem_step": problem_step,
             "artifacts_payload": artifacts_payload,
             "errors_payload": errors_payload,
             "confirmations": confirmations,

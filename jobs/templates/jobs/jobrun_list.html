@@ -3,6 +3,28 @@
 <head>
   <meta charset="utf-8">
   <title>Job runs</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #f8f8f8; }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+      color: #fff;
+    }
+    .status-queued { background: #667085; }
+    .status-running { background: #175cd3; }
+    .status-success { background: #027a48; }
+    .status-partial { background: #b54708; }
+    .status-failed { background: #b42318; }
+  </style>
 </head>
 <body>
   <h1>Запуски</h1>
@@ -45,7 +67,7 @@
     <a href="{% url 'job_run_list' %}">Reset</a>
   </form>
 
-  <table border="1" cellpadding="6" cellspacing="0">
+  <table>
     <thead>
       <tr>
         <th>ID</th>
@@ -61,7 +83,7 @@
         <tr>
           <td>{{ run.id }}</td>
           <td>{{ run.job_type }}</td>
-          <td>{{ run.get_status_display }}</td>
+          <td><span class="status-badge status-{{ run.status_meta.css }}">{{ run.status_meta.label }}</span></td>
           <td>{{ run.started_at|default:"—" }}</td>
           <td>{{ run.finished_at|default:"—" }}</td>
           <td>

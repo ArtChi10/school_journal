@@ -4,75 +4,28 @@
   <meta charset="utf-8">
   <title>Job run {{ job_run.id }}</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 24px;
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    .summary-card, .result-summary, .confirmations-block, .logs-block {
+      border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px;
     }
-
-    .summary-card,
-    .result-summary,
-    .confirmations-block,
-    .logs-block {
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      padding: 16px;
-      margin-bottom: 16px;
-    }
-
-    .summary-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 8px 16px;
-    }
-
-    .muted {
-      color: #666;
-    }
-
-    .logs-table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-
-    .logs-table th,
-    .logs-table td {
-      border: 1px solid #ddd;
-      padding: 8px;
-      vertical-align: top;
-      text-align: left;
-    }
-
-    .logs-table th {
-      background-color: #f8f8f8;
-    }
-
-    .log-level {
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-    }
-
-    .level-error {
-      color: #b42318;
-    }
-
-    .level-warning {
-      color: #b54708;
-    }
-
-    .level-info {
-      color: #344054;
-    }
-
-    details summary {
-      cursor: pointer;
-    }
-
-    pre {
-      white-space: pre-wrap;
-      margin: 8px 0 0;
-      font-size: 13px;
-    }
+    .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 16px; }
+    .muted { color: #666; }
+    .logs-table { width: 100%; border-collapse: collapse; }
+    .logs-table th, .logs-table td { border: 1px solid #ddd; padding: 8px; vertical-align: top; text-align: left; }
+    .logs-table th { background-color: #f8f8f8; }
+    .log-level { font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+    .level-error { color: #b42318; }
+    .level-warning { color: #b54708; }
+    .level-info { color: #344054; }
+    .status-badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: #fff; }
+    .status-queued { background: #667085; }
+    .status-running { background: #175cd3; }
+    .status-success { background: #027a48; }
+    .status-partial { background: #b54708; }
+    .status-failed { background: #b42318; }
+    .problem-summary { border-left: 4px solid #b42318; background: #fef3f2; padding: 12px; margin-top: 12px; }
+    details summary { cursor: pointer; }
+    pre { white-space: pre-wrap; margin: 8px 0 0; font-size: 13px; }
   </style>
 </head>
 <body>
@@ -87,11 +40,18 @@
     <div class="summary-grid">
       <div><strong>ID:</strong> {{ job_run.id }}</div>
       <div><strong>Job type:</strong> {{ job_run.job_type }}</div>
-      <div><strong>Status:</strong> {{ job_run.get_status_display }}</div>
+       <div><strong>Status:</strong> <span class="status-badge status-{{ job_status_meta.css }}">{{ job_status_meta.label }}</span></div>
       <div><strong>Started at:</strong> {{ job_run.started_at|default:"—" }}</div>
       <div><strong>Finished at:</strong> {{ job_run.finished_at|default:"—" }}</div>
       <div><strong>Initiated by:</strong> {{ job_run.initiated_by|default:"—" }}</div>
     </div>
+     {% if problem_step %}
+      <div class="problem-summary">
+        <strong>Проблемный шаг:</strong>
+        <a href="#{{ problem_step.anchor }}">{{ problem_step.key }} — {{ problem_step.title }}</a><br>
+        <strong>Причина:</strong> {{ problem_step.error_reason|default:"Причина не указана" }}
+      </div>
+    {% endif %}
   </section>
   {% if result_summary %}
     <section class="result-summary">
@@ -108,7 +68,7 @@
       </table>
     </section>
   {% endif %}
-  {% if pipeline_steps %}
+  {% if step_rows %}
     <section class="result-summary">
       <h2>Pipeline steps</h2>
       <table class="logs-table">
@@ -116,22 +76,31 @@
           <tr>
             <th>Step</th>
             <th>Status</th>
-            <th>Summary</th>
+            <th>Started at</th>
+            <th>Finished at</th>
+            <th>Ошибка / причина</th>
+            <th>Контекст</th>
           </tr>
         </thead>
         <tbody>
-          {% for step in pipeline_steps %}
-            <tr>
+          {% for step in step_rows %}
+            <tr id="{{ step.anchor }}">
               <td>{{ step.key }} — {{ step.title }}</td>
-              <td>{{ step.status }}</td>
+              <td><span class="status-badge status-{{ step.status_meta.css }}">{{ step.status_meta.label }}</span></td>
+              <td>{{ step.started_at|default:"—" }}</td>
+              <td>{{ step.finished_at|default:"—" }}</td>
               <td>
-                {% if step.summary %}
-                  <pre>{{ step.summary }}</pre>
-                {% elif step.job_run_id %}
-                  linked run: {{ step.job_run_id }}
+                {% if step.error_reason %}
+                  {{ step.error_reason }}
                 {% else %}
                   <span class="muted">—</span>
                 {% endif %}
+              </td>
+              <td>
+                <details>
+                  <summary>Показать context_json/error details</summary>
+                  <pre>{{ step.context_details }}</pre>
+                </details>
               </td>
             </tr>
           {% endfor %}
@@ -198,9 +167,7 @@
         {% for log in logs %}
           <tr>
             <td>{{ log.ts }}</td>
-            <td>
-              <span class="log-level level-{{ log.level }}">{{ log.level }}</span>
-            </td>
+            <td><span class="log-level level-{{ log.level }}">{{ log.level }}</span></td>
             <td>{{ log.message }}</td>
             <td>
               {% if log.context_json %}
