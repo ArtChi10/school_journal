@@ -29,6 +29,8 @@ class JobRunDetailViewTests(TestCase):
         self.assertContains(response, "Подтверждения учителей")
         self.assertContains(response, "Teacher A")
         self.assertContains(response, "исправил")
+        self.assertContains(response, "Export JSON")
+        self.assertContains(response, "Export CSV")
 
     def test_detail_shows_pipeline_sections(self):
         job_run = JobRun.objects.create(
@@ -83,3 +85,66 @@ class RunFullPipelineViewTests(TestCase):
         self.assertContains(response, "Запустить полный пайплайн")
         self.assertContains(response, "status-queued")
         self.assertContains(response, "queued")
+
+class JobRunIssuesExportViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="exporter", password="p")
+        self.user.user_permissions.add(Permission.objects.get(codename="view_jobrun"))
+        self.client.force_login(self.user)
+
+    def test_export_json_returns_issues_payload(self):
+        job_run = JobRun.objects.create(
+            job_type="run_validation",
+            result_json={
+                "issues": [
+                    {"sheet": "Лист 1", "teacher_name": "Иванов И.И.", "severity": "warning", "message": "Проверьте значение"}
+                ]
+            },
+        )
+
+        response = self.client.get(reverse("export_run_issues_json", kwargs={"run_id": job_run.id}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/json; charset=utf-8")
+        self.assertIn("attachment;", response["Content-Disposition"])
+        self.assertIn("Лист 1", response.content.decode("utf-8"))
+
+    def test_export_csv_returns_bom_and_headers(self):
+        job_run = JobRun.objects.create(
+            job_type="run_validation",
+            result_json={
+                "issues": [
+                    {
+                        "sheet": "Лист 1",
+                        "class_code": "7A",
+                        "subject_name": "Математика",
+                        "teacher_name": "Петров П.П.",
+                        "student": "Сидоров",
+                        "row": 12,
+                        "field": "mark",
+                        "code": "invalid_mark",
+                        "severity": "critical",
+                        "message": "Оценка вне диапазона",
+                    }
+                ]
+            },
+        )
+
+        response = self.client.get(reverse("export_run_issues_csv", kwargs={"run_id": job_run.id}))
+        payload = b"".join(response.streaming_content)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
+        self.assertTrue(payload.startswith(b"\xef\xbb\xbf"))
+        text = payload.decode("utf-8")
+        self.assertIn("sheet,class_code,subject_name,teacher_name,student,row,field,code,severity,message", text)
+        self.assertIn("Математика", text)
+
+    def test_export_csv_returns_headers_for_empty_issues(self):
+        job_run = JobRun.objects.create(job_type="run_validation", result_json={"issues": []})
+
+        response = self.client.get(reverse("export_run_issues_csv", kwargs={"run_id": job_run.id}))
+        payload = b"".join(response.streaming_content).decode("utf-8")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("sheet,class_code,subject_name,teacher_name,student,row,field,code,severity,message", payload)

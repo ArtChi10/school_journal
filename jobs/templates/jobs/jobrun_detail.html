@@ -39,6 +39,14 @@
     <button type="submit">Отправить напоминания учителям</button>
   </form>
 {% endif %}
+  <p style="margin: 10px 0;">
+    <a href="{% url 'export_run_issues_json' job_run.id %}">
+      <button type="button">Export JSON</button>
+    </a>
+    <a href="{% url 'export_run_issues_csv' job_run.id %}">
+      <button type="button">Export CSV</button>
+    </a>
+  </p>
 <h1>Детали запуска</h1>
 
   <section class="summary-card">

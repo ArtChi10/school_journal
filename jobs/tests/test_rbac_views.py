@@ -70,3 +70,19 @@ class RBACJobViewsTests(TestCase):
         response = self.client.get(reverse("job_run_list"))
 
         self.assertEqual(response.status_code, 200)
+
+    def test_export_issues_forbidden_without_view_permission(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("export_run_issues_json", kwargs={"run_id": self.job.id}))
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("нет прав на экспорт issues", response.content.decode("utf-8"))
+
+    def test_export_issues_allowed_with_view_permission(self):
+        self._grant("view_jobrun")
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("export_run_issues_csv", kwargs={"run_id": self.job.id}))
+
+        self.assertEqual(response.status_code, 200)

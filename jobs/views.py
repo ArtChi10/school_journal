@@ -1,8 +1,10 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
+from django.http import HttpResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
-
+import csv
+import json
 from django.views.decorators.http import require_POST
 from admin_panel.authz import permission_required_403
 from notifications.reminders import send_validation_reminders_for_job
@@ -111,6 +113,34 @@ def _resolve_problem_step(step_rows):
             return step
     return None
 
+ISSUES_EXPORT_COLUMNS = [
+    "sheet",
+    "class_code",
+    "subject_name",
+    "teacher_name",
+    "student",
+    "row",
+    "field",
+    "code",
+    "severity",
+    "message",
+]
+
+def _extract_issues_payload(job_run: JobRun) -> list[dict]:
+    payload = (job_run.result_json or {}).get("issues", [])
+    if not isinstance(payload, list):
+        return []
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def _normalize_issue_row(issue: dict) -> dict[str, str]:
+    normalized: dict[str, str] = {}
+    for key in ISSUES_EXPORT_COLUMNS:
+        value = issue.get(key)
+        normalized[key] = "" if value is None else str(value)
+    return normalized
+
+
 @login_required
 @permission_required_403("jobs.view_jobrun", message="Доступ запрещён: нет прав на просмотр запусков.")
 def list_job_runs(request):
@@ -204,6 +234,41 @@ def job_run_detail(request, run_id):
             "confirmations": confirmations,
         },
     )
+
+class _Echo:
+    def write(self, value):
+        return value
+
+
+@login_required
+@permission_required_403("jobs.view_jobrun", message="Доступ запрещён: нет прав на экспорт issues.")
+def export_run_issues_json(request, run_id):
+    job_run = get_object_or_404(JobRun, id=run_id)
+    issues = _extract_issues_payload(job_run)
+    body = json.dumps(issues, ensure_ascii=False, indent=2)
+    response = HttpResponse(body, content_type="application/json; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="run-{job_run.id}-issues.json"'
+    return response
+
+
+@login_required
+@permission_required_403("jobs.view_jobrun", message="Доступ запрещён: нет прав на экспорт issues.")
+def export_run_issues_csv(request, run_id):
+    job_run = get_object_or_404(JobRun, id=run_id)
+    issues = _extract_issues_payload(job_run)
+
+    writer = csv.DictWriter(_Echo(), fieldnames=ISSUES_EXPORT_COLUMNS)
+
+    def row_iter():
+        yield "\ufeff"
+        yield writer.writerow({column: column for column in ISSUES_EXPORT_COLUMNS})
+        for issue in issues:
+            yield writer.writerow(_normalize_issue_row(issue))
+
+    response = StreamingHttpResponse(row_iter(), content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="run-{job_run.id}-issues.csv"'
+    return response
+
 @login_required
 @require_POST
 @permission_required_403("jobs.run_full_pipeline", message="Доступ запрещён: нельзя запускать полный пайплайн.")
