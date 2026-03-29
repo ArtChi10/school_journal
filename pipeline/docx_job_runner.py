@@ -8,6 +8,7 @@ from django.utils import timezone
 from jobs.models import JobLog, JobRun
 from jobs.services import log_step
 from pipeline.legacy_docx import LegacyDocxGenerationError, LegacyDocxGenerator
+from pipeline.services_upload import ReviewUploadError, run_upload_docx_review_step
 
 
 def _class_code_from_xlsx_path(file_path: Path) -> str:
@@ -22,10 +23,12 @@ def run_generate_docx_job(
     xlsx_files: list[str],
     output_root: str = "output",
     initiated_by=None,
+    upload_to_review: bool = False,
 ) -> JobRun:
     params = {
         "xlsx_files": xlsx_files,
         "output_root": output_root,
+        "upload_to_review": upload_to_review,
     }
 
     job_run = JobRun.objects.create(
@@ -53,7 +56,13 @@ def run_generate_docx_job(
     output_dirs: list[str] = []
     errors: list[dict] = []
     classes: list[dict] = []
-
+    upload_result = {
+        "uploaded_total": 0,
+        "uploaded_success": 0,
+        "uploaded_failed": 0,
+        "uploaded_files": [],
+        "errors": [],
+    }
     generator = LegacyDocxGenerator()
 
     try:
@@ -141,6 +150,29 @@ def run_generate_docx_job(
         else:
             final_status = JobRun.Status.SUCCESS
 
+        if all_files and upload_to_review:
+            try:
+                upload_result = run_upload_docx_review_step(docx_files=all_files, job_run=job_run)
+                errors.extend(upload_result.get("errors", []))
+            except ReviewUploadError as exc:
+                upload_result = {
+                    "uploaded_total": len(all_files),
+                    "uploaded_success": 0,
+                    "uploaded_failed": len(all_files),
+                    "uploaded_files": [],
+                    "errors": [{"error": str(exc), "type": exc.__class__.__name__}],
+                }
+                errors.append({"error": str(exc), "type": exc.__class__.__name__, "stage": "upload_review"})
+                log_step(
+                    job_run=job_run,
+                    level=JobLog.Level.ERROR,
+                    message=f"Review upload setup failed: {exc}",
+                    context={"error": str(exc), "type": exc.__class__.__name__},
+                )
+
+        if final_status == JobRun.Status.SUCCESS and upload_result["uploaded_failed"] > 0:
+            final_status = JobRun.Status.PARTIAL
+
         result_json = {
             "docx_total": docx_total,
             "docx_success": docx_success,
@@ -149,6 +181,10 @@ def run_generate_docx_job(
             "files": all_files,
             "errors": errors,
             "classes": classes,
+            "uploaded_total": upload_result["uploaded_total"],
+            "uploaded_success": upload_result["uploaded_success"],
+            "uploaded_failed": upload_result["uploaded_failed"],
+            "uploaded_files": upload_result["uploaded_files"],
         }
 
         job_run.result_json = result_json
@@ -165,6 +201,9 @@ def run_generate_docx_job(
                 "docx_total": docx_total,
                 "docx_success": docx_success,
                 "docx_failed": docx_failed,
+                "uploaded_total": upload_result["uploaded_total"],
+                "uploaded_success": upload_result["uploaded_success"],
+                "uploaded_failed": upload_result["uploaded_failed"],
             },
         )
     except LegacyDocxGenerationError as exc:
