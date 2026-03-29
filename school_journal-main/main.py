@@ -333,7 +333,9 @@ if __name__ == '__main__':
     header_template = os.path.join(script_dir, 'input', 'first page template.docx')
 
     # 1) читаем словарь {класс: ссылка}
-    GOOGLE_CLASSES_URL = "https://docs.google.com/spreadsheets/d/19cUg8HPr1qHLmtgjbhIR1JFezK1vYgWi4erqi6AP9UI/edit?gid=0#gid=0"
+    GOOGLE_CLASSES_URL = os.getenv("GOOGLE_CLASSES_URL", "")
+    if not GOOGLE_CLASSES_URL:
+        raise RuntimeError("Set GOOGLE_CLASSES_URL in environment")
     class_links = read_class_links_from_gsheet(GOOGLE_CLASSES_URL)
 
     # 2) качаем все журналы по OAuth → input/downloads/journal_<класс>.xlsx

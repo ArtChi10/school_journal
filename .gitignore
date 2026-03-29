@@ -15,3 +15,13 @@ token_gspread.json
 **/token_gmail.json
 **/token_gspread.json
 .env
+# Env / secrets
+.env.*
+!.env.example
+creds/**/*.json
+**/creds/**/*.json
+
+# Legacy secret artifacts
+**/service_account*.json
+**/*client_secret*.json
+**/*token*.json

@@ -16,21 +16,22 @@ import gspread
 OUTPUT_ROOTS = [Path("pdf_out").resolve(), Path("output").resolve()]
 
 # Google Sheet с контактами (твоя ссылка)
-SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1A4vl51mZXg4gpfrkS7eZVXauFjO8iFShvMIyK-aUEE0/edit?gid=0#gid=0"
+SPREADSHEET_URL = os.getenv("PARENT_REPORTS_SPREADSHEET_URL", "")
 SHEET_GID = 0            # работаем по gid, чтобы не зависеть от имени листа
 DATA_RANGE = "A1:D"      # A: индекс/пусто, B: ФИО, C: email1, D: email21
 
 # Авторизация к Google Sheets:
 # Вариант по умолчанию — через OAuth с client_secret.json (создаст token_gspread.json).
 # Если используешь сервисный аккаунт — расшарь на него таблицу и укажи путь ниже.
-SERVICE_ACCOUNT_JSON = None  # например: "service_account.json" или оставь None
+SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON_PATH", "") or None
 
 # Отправка через Яндекс (SMTP SSL)
 SMTP_HOST = "smtp.yandex.ru"
 SMTP_PORT_SSL = 465
-YANDEX_LOGIN = "info@p-s.ge"              # ← отправитель
-YANDEX_APP_PASSWORD = "TbilisiSchool"  # ← пароль приложения
-MAIL_FROM = YANDEX_LOGIN
+YANDEX_LOGIN = os.getenv("SMTP_LOGIN", "")  # ← отправитель
+YANDEX_APP_PASSWORD = os.getenv("SMTP_PASSWORD", "")  # ← пароль приложения
+MAIL_FROM = os.getenv("SMTP_FROM", YANDEX_LOGIN)
+
 
 # Тема и текст письма
 MAIL_SUBJECT = "Отчёт по третьему модулю 2025–2026 — {student}"
@@ -46,7 +47,8 @@ MAIL_BODY = (
 SEND_PAUSE = 2
 
 # =======================================================
-
+if not SPREADSHEET_URL:
+    raise RuntimeError("Set PARENT_REPORTS_SPREADSHEET_URL in environment")
 
 # ---------- доступ к Google Sheets ----------
 def open_sheet():

@@ -1,6 +1,33 @@
 import json
+import os
 import uuid
 import requests
+from edupage_api import Edupage
+
+
+EDUPAGE_USERNAME = os.getenv("EDUPAGE_USERNAME", "")
+EDUPAGE_PASSWORD = os.getenv("EDUPAGE_PASSWORD", "")
+EDUPAGE_SCHOOL = os.getenv("EDUPAGE_SCHOOL", "")
+EDUPAGE_CHAT_ID = os.getenv("EDUPAGE_CHAT_ID", "")
+EDUPAGE_OPENED_TIMESTAMP = os.getenv("EDUPAGE_OPENED_TIMESTAMP", "")
+EDUPAGE_UID = os.getenv("EDUPAGE_UID", "")
+EDUPAGE_UIDSGN = os.getenv("EDUPAGE_UIDSGN", "")
+EDUPAGE_TEST_MESSAGE = os.getenv("EDUPAGE_TEST_MESSAGE", "Привет! Это сообщение отправлено через API 😊")
+
+
+if not all([
+    EDUPAGE_USERNAME,
+    EDUPAGE_PASSWORD,
+    EDUPAGE_SCHOOL,
+    EDUPAGE_CHAT_ID,
+    EDUPAGE_OPENED_TIMESTAMP,
+    EDUPAGE_UID,
+    EDUPAGE_UIDSGN,
+]):
+    raise RuntimeError(
+        "Set EDUPAGE_USERNAME, EDUPAGE_PASSWORD, EDUPAGE_SCHOOL, EDUPAGE_CHAT_ID, "
+        "EDUPAGE_OPENED_TIMESTAMP, EDUPAGE_UID and EDUPAGE_UIDSGN in environment"
+    )
 
 def send_private_message_raw(session: requests.Session,
                              chatid: int,
@@ -13,11 +40,9 @@ def send_private_message_raw(session: requests.Session,
     Отправляет сообщение в личный чат.
     """
 
-    # 1. Делаем randid + key такие же, как делает браузер
     randid = uuid.uuid4().hex.upper()[:20]
     key = f"chatsprava_{randid}"
 
-    # 2. actions — точная структура
     actions = {
         key: {
             "type": "chatsprava",
@@ -28,15 +53,13 @@ def send_private_message_raw(session: requests.Session,
         }
     }
 
-    # 3. URL с точными Query-параметрами
     url = (
-        "https://projector.edupage.org/chat/quick"
+        f"https://{EDUPAGE_SCHOOL}.edupage.org/chat/quick"
         "?cmd=ChatList"
         "&t=2025-11-19 21:47:56"
-        "&e=projector"
+        f"&e={EDUPAGE_SCHOOL}"
     )
 
-    # 4. Формируем тело запроса
     payload = {
         "akcia": "sync",
         "openedChats": f"{chatid}|{opened_timestamp}",
@@ -48,33 +71,27 @@ def send_private_message_raw(session: requests.Session,
     print("=== Request Body ===")
     print(json.dumps(payload, indent=4, ensure_ascii=False))
 
-    # 5. Отправляем
     resp = session.post(url, data=payload)
     print("=== Response ===")
     print(resp.text)
 
     data = resp.json()
 
-    # 6. Проверяем OK
     if data.get("actionsRes", {}).get(key) != "ok":
         raise RuntimeError(f"Сообщение НЕ отправлено: {data}")
 
     print("Сообщение успешно отправлено!")
     return data
 
-from edupage_api import Edupage
-
 ed = Edupage()
-ed.login("artchibisov10@gmail.com", "Ilovemomforever4!", "projector")
+ed.login(EDUPAGE_USERNAME, EDUPAGE_PASSWORD, EDUPAGE_SCHOOL)
 
-chatid = 5237
-opened_timestamp = "2025-11-19 21:27:44"
 
 send_private_message_raw(
     session=ed.session,
-    chatid=chatid,
-    text="Привет! Это сообщение отправлено через API 😊",
-    uid="Ucitel-218 ",
-    uidsgn="962cdcdfb19dec0ff6e595d4af1e807372127947cc18aecbe96d0d1f413f5651",
-    opened_timestamp=opened_timestamp
+    chatid=int(EDUPAGE_CHAT_ID),
+    text=EDUPAGE_TEST_MESSAGE,
+    uid=EDUPAGE_UID,
+    uidsgn=EDUPAGE_UIDSGN,
+    opened_timestamp=EDUPAGE_OPENED_TIMESTAMP,
 )
