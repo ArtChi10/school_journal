@@ -28,3 +28,6 @@ creds/**/*.json
 
 # Runtime logs
 logs/
+# Build/runtime artifacts
+staticfiles/
+media/

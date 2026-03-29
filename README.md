@@ -47,3 +47,37 @@ curl -sS http://127.0.0.1:8000/readyz
 tail -n 100 logs/app.log
 tail -n 100 logs/jobs_errors.log
 ```
+
+
+```
+
+## Docker / deploy
+
+1. Подготовьте env и креды:
+   ```bash
+   cp .env.example .env
+   mkdir -p creds
+   # поместите JSON-файлы Google credentials в ./creds
+   ```
+2. Запуск:
+   ```bash
+   docker compose up --build
+   ```
+
+Что происходит при старте контейнера:
+- `python manage.py migrate --noinput`
+- `python manage.py collectstatic --noinput`
+- запуск `gunicorn admin_panel.wsgi:application`
+
+Хранилища в compose:
+- `static_data` → `/app/staticfiles`
+- `media_data` → `/app/media`
+- `logs_data` → `/app/logs`
+- `./creds` (read-only) → `/app/creds`
+
+Быстрые проверки:
+```bash
+curl -sS http://127.0.0.1:8000/healthz
+
+docker compose exec web python manage.py build_criteria_table --all-active
+```

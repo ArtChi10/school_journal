@@ -7,10 +7,28 @@ services:
     env_file:
       - .env
     environment:
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
-      DJANGO_DEBUG: ${DJANGO_DEBUG:-0}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-127.0.0.1,localhost}
+      DJANGO_STATIC_ROOT: /app/staticfiles
+      DJANGO_MEDIA_ROOT: /app/media
+      GOOGLE_OAUTH_CLIENT_SECRET_PATH: ${GOOGLE_OAUTH_CLIENT_SECRET_PATH:-/app/creds/client_secret.json}
+      GOOGLE_OAUTH_TOKEN_PATH: ${GOOGLE_OAUTH_TOKEN_PATH:-/app/creds/token.json}
+      GOOGLE_SERVICE_ACCOUNT_JSON_PATH: ${GOOGLE_SERVICE_ACCOUNT_JSON_PATH:-/app/creds/service_account.json}
     ports:
       - "8000:8000"
     volumes:
-      - ./school_journal-main/output:/app/school_journal-main/output
-      - ./school_journal-main/input:/app/school_journal-main/input
+      - static_data:/app/staticfiles
+      - media_data:/app/media
+      - logs_data:/app/logs
+      - ./creds:/app/creds:ro
+    healthcheck:
+      test: [ "CMD", "python", "manage.py", "shell", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz').read()" ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+
+volumes:
+  static_data:
+  media_data:
+  logs_data:

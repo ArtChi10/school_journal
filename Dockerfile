@@ -5,16 +5,25 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY school_journal-main/requirements.txt /tmp/legacy-requirements.txt
 COPY webapp/requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r /tmp/legacy-requirements.txt -r /tmp/requirements.txt
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r /tmp/legacy-requirements.txt -r /tmp/requirements.txt
+
+RUN addgroup --system app && adduser --system --ingroup app app
+
 
 COPY . /app
 
-WORKDIR /app/webapp
-RUN python manage.py migrate --noinput
+RUN mkdir -p /app/staticfiles /app/media /app/logs /app/creds \
+    && chown -R app:app /app
 
+USER app
 EXPOSE 8000
 
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2", "--timeout", "180"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["gunicorn", "admin_panel.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2", "--timeout", "180"]
