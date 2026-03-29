@@ -1,5 +1,9 @@
 from django.core.paginator import Paginator
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
+
+from django.views.decorators.http import require_POST
+
+from pipeline.full_pipeline_runner import run_full_pipeline
 
 from .models import JobRun
 
@@ -61,10 +65,25 @@ def job_run_detail(request, run_id):
     confirmations = job_run.teacher_confirmations.all().order_by("-confirmed_at")
 
     summary_payload = None
+    pipeline_steps = []
+    artifacts_payload = {}
+    errors_payload = []
     if isinstance(job_run.result_json, dict):
         possible_summary = job_run.result_json.get("summary")
         if isinstance(possible_summary, dict):
             summary_payload = possible_summary
+
+        possible_steps = job_run.result_json.get("pipeline_steps")
+        if isinstance(possible_steps, list):
+            pipeline_steps = possible_steps
+
+        possible_artifacts = job_run.result_json.get("artifacts")
+        if isinstance(possible_artifacts, dict):
+            artifacts_payload = possible_artifacts
+
+        possible_errors = job_run.result_json.get("errors")
+        if isinstance(possible_errors, list):
+            errors_payload = possible_errors
 
     return render(
         request,
@@ -74,6 +93,14 @@ def job_run_detail(request, run_id):
             "logs": logs,
             "back_query": request.GET.urlencode(),
             "result_summary": summary_payload,
+            "pipeline_steps": pipeline_steps,
+            "artifacts_payload": artifacts_payload,
+            "errors_payload": errors_payload,
             "confirmations": confirmations,
         },
     )
+
+@require_POST
+def run_full_pipeline_view(request):
+    job_run = run_full_pipeline(initiated_by=request.user if request.user.is_authenticated else None)
+    return redirect("job_run_detail", run_id=job_run.id)

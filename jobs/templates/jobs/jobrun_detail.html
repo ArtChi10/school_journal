@@ -108,6 +108,51 @@
       </table>
     </section>
   {% endif %}
+  {% if pipeline_steps %}
+    <section class="result-summary">
+      <h2>Pipeline steps</h2>
+      <table class="logs-table">
+        <thead>
+          <tr>
+            <th>Step</th>
+            <th>Status</th>
+            <th>Summary</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for step in pipeline_steps %}
+            <tr>
+              <td>{{ step.key }} — {{ step.title }}</td>
+              <td>{{ step.status }}</td>
+              <td>
+                {% if step.summary %}
+                  <pre>{{ step.summary }}</pre>
+                {% elif step.job_run_id %}
+                  linked run: {{ step.job_run_id }}
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  {% endif %}
+
+  {% if artifacts_payload %}
+    <section class="result-summary">
+      <h2>Artifacts</h2>
+      <pre>{{ artifacts_payload }}</pre>
+    </section>
+  {% endif %}
+
+  {% if errors_payload %}
+    <section class="result-summary">
+      <h2>Errors</h2>
+      <pre>{{ errors_payload }}</pre>
+    </section>
+  {% endif %}
     <section class="confirmations-block">
     <h2>Подтверждения учителей</h2>
     <table class="logs-table">

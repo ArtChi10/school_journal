@@ -6,7 +6,10 @@
 </head>
 <body>
   <h1>Запуски</h1>
-
+  <form method="post" action="{% url 'run_full_pipeline' %}" style="margin: 12px 0;">
+    {% csrf_token %}
+    <button type="submit">Запустить полный пайплайн</button>
+  </form>
   <form method="get">
     <label>
       Status:
