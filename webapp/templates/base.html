@@ -42,6 +42,9 @@
               {% if perms.pipeline.view_criterionentry %}
                 <a class="nav-link {% if '/criteria-table/' in request.path %}active{% endif %}" href="{% url 'pipeline:criteria_table' %}">Таблица критериев</a>
               {% endif %}
+                {% if perms.pipeline.view_validcriteriontemplate %}
+                <a class="nav-link {% if '/valid-criteria/' in request.path %}active{% endif %}" href="{% url 'pipeline:valid_criteria_list' %}">Whitelist критериев</a>
+              {% endif %}
               {% if perms.pipeline.view_parentcontact %}
                 <a class="nav-link {% if '/parent-contacts/' in request.path %}active{% endif %}" href="{% url 'pipeline:parent_contacts_list' %}">Контакты родителей</a>
               {% endif %}

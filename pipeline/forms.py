@@ -1,6 +1,6 @@
 from django import forms
 
-from pipeline.models import ParentContact
+from pipeline.models import ParentContact, ValidCriterionTemplate
 
 
 class ParentContactForm(forms.ModelForm):
@@ -26,3 +26,13 @@ class ParentContactForm(forms.ModelForm):
 
 class ParentContactsImportForm(forms.Form):
     file = forms.FileField(label="CSV файл")
+
+
+class ValidCriterionTemplateForm(forms.ModelForm):
+    class Meta:
+        model = ValidCriterionTemplate
+        fields = ["name", "is_active"]
+        labels = {
+            "name": "Название критерия",
+            "is_active": "Активен",
+        }

@@ -8,7 +8,7 @@ from django.utils import timezone
 from jobs.models import JobLog, JobRun
 from jobs.services import log_step
 from journal_links.models import ClassSheetLink
-from pipeline.models import CriterionEntry
+from pipeline.models import CriterionEntry, ValidCriterionTemplate, normalize_criterion_name
 from pipeline.services import (
     CriterionNormalizationError,
     WorkbookReadError,
@@ -70,6 +70,9 @@ def run_build_criteria_job(
     tables_failed = 0
 
     try:
+        active_valid_templates = set(
+            ValidCriterionTemplate.objects.filter(is_active=True).values_list("normalized_name", flat=True)
+        )
         download_result = run_download_descriptors_step(links=links, job_run=job_run)
         downloaded = {
             item["link_id"]: item
@@ -100,12 +103,28 @@ def run_build_criteria_job(
                         total_sheets_keys.add((row["source_workbook"], row["source_sheet_name"]))
 
                         criterion_text_ai = ""
-                        try:
-                            criterion_text_ai = normalize_criterion_text_with_ai(row["criterion_text"])
-                            if criterion_text_ai:
-                                ai_ok += 1
-                        except CriterionNormalizationError:
-                            ai_failed += 1
+                        normalized_name = normalize_criterion_name(row["criterion_text"])
+                        if normalized_name in active_valid_templates:
+                            criterion_text_ai = row["criterion_text"]
+                            log_step(
+                                job_run=job_run,
+                                level=JobLog.Level.INFO,
+                                message="Criterion validated by whitelist",
+                                context={
+                                    "reason": "whitelist",
+                                    "class_code": row["class_code"],
+                                    "subject_name": row["subject_name"],
+                                    "module_number": row["module_number"],
+                                    "criterion_text": row["criterion_text"],
+                                },
+                            )
+                        else:
+                            try:
+                                criterion_text_ai = normalize_criterion_text_with_ai(row["criterion_text"])
+                                if criterion_text_ai:
+                                    ai_ok += 1
+                            except CriterionNormalizationError:
+                                ai_failed += 1
 
                         _, _created = CriterionEntry.objects.update_or_create(
                             class_code=row["class_code"],

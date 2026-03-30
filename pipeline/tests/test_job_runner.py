@@ -10,7 +10,7 @@ from jobs.models import JobLog, JobRun
 from journal_links.models import ClassSheetLink
 from pipeline.job_runner import run_build_criteria_job
 from pipeline.services import CriterionNormalizationError
-from pipeline.models import CriterionEntry
+from pipeline.models import CriterionEntry, ValidCriterionTemplate
 
 
 def _build_workbook(path: Path) -> None:
@@ -21,7 +21,7 @@ def _build_workbook(path: Path) -> None:
     ws_math["C2"] = "Ms. Frizzle"
     ws_math["C3"] = "Module 2"
     ws_math.cell(row=5, column=2, value="Критерии оценивания | \nAssessment criteria")
-    ws_math.cell(row=5, column=3, value="Критерий 1")
+    ws_math.cell(row=5, column=3, value="Итоговая работа")
     ws_math.cell(row=5, column=4, value="Критерий 2")
 
     ws_history = wb.create_sheet("History")
@@ -97,3 +97,67 @@ class BuildCriteriaJobTests(TestCase):
                 call_command("build_criteria_table", "--class-code", "4A")
 
         self.assertTrue(JobRun.objects.filter(job_type="build_criteria_table").exists())
+
+    def test_whitelist_criterion_is_marked_valid_without_ai(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = Path(tmpdir) / "criteria.xlsx"
+            _build_workbook(workbook_path)
+
+            ClassSheetLink.objects.create(
+                class_code="4A",
+                subject_name="Math",
+                teacher_name="Teacher A",
+                google_sheet_url="https://docs.google.com/spreadsheets/d/test-id/edit#gid=0",
+                is_active=True,
+            )
+            ValidCriterionTemplate.objects.create(name="Итоговая   работа")
+
+            with patch(
+                    "pipeline.job_runner.run_download_descriptors_step",
+                    return_value={
+                        "downloads_total": 1,
+                        "downloads_success": 1,
+                        "downloads_failed": 0,
+                        "files": [{"link_id": 1, "status": "success", "path": str(workbook_path), "size_bytes": 123}],
+                    },
+            ), patch("pipeline.job_runner.normalize_criterion_text_with_ai", return_value="AI") as ai_mock:
+                job = run_build_criteria_job(class_code="4A")
+
+        self.assertEqual(job.status, JobRun.Status.SUCCESS)
+        self.assertEqual(ai_mock.call_count, 2)
+        self.assertTrue(
+            JobLog.objects.filter(
+                job_run=job,
+                message="Criterion validated by whitelist",
+                context_json__reason="whitelist",
+            ).exists()
+        )
+        self.assertTrue(CriterionEntry.objects.filter(criterion_text="Итоговая работа",
+                                                      criterion_text_ai="Итоговая работа").exists())
+
+    def test_disabled_whitelist_template_sends_criterion_to_ai(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = Path(tmpdir) / "criteria.xlsx"
+            _build_workbook(workbook_path)
+
+            ClassSheetLink.objects.create(
+                class_code="4A",
+                subject_name="Math",
+                teacher_name="Teacher A",
+                google_sheet_url="https://docs.google.com/spreadsheets/d/test-id/edit#gid=0",
+                is_active=True,
+            )
+            ValidCriterionTemplate.objects.create(name="Итоговая работа", is_active=False)
+
+            with patch(
+                    "pipeline.job_runner.run_download_descriptors_step",
+                    return_value={
+                        "downloads_total": 1,
+                        "downloads_success": 1,
+                        "downloads_failed": 0,
+                        "files": [{"link_id": 1, "status": "success", "path": str(workbook_path), "size_bytes": 123}],
+                    },
+            ), patch("pipeline.job_runner.normalize_criterion_text_with_ai", return_value="AI") as ai_mock:
+                run_build_criteria_job(class_code="4A")
+
+        self.assertEqual(ai_mock.call_count, 3)

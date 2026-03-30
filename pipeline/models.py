@@ -1,6 +1,12 @@
+import re
+
+from django.conf import settings
 from django.core.validators import EmailValidator
 from django.db import models
-
+def normalize_criterion_name(value: str) -> str:
+    text = str(value or "").replace("\xa0", " ").strip().lower()
+    text = re.sub(r"\s+", " ", text)
+    return text
 
 class CriterionEntry(models.Model):
     class_code = models.CharField(max_length=64)
@@ -29,6 +35,35 @@ class CriterionEntry(models.Model):
 
     def __str__(self) -> str:
         return f"{self.class_code} / {self.subject_name} / M{self.module_number}"
+
+
+class ValidCriterionTemplate(models.Model):
+    name = models.CharField(max_length=255)
+    normalized_name = models.CharField(max_length=255, unique=True, editable=False)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="valid_criterion_templates",
+    )
+
+    class Meta:
+        ordering = ["name"]
+        indexes = [
+            models.Index(fields=["normalized_name"]),
+            models.Index(fields=["is_active"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.normalized_name = normalize_criterion_name(self.name)
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return self.name
 
 class ParentContact(models.Model):
     parallel = models.PositiveIntegerField()

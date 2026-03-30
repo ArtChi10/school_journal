@@ -2,7 +2,7 @@ from django.contrib.auth.models import Permission, User
 from django.test import TestCase
 from django.urls import reverse
 
-from pipeline.models import CriterionEntry, ParentContact
+from pipeline.models import CriterionEntry, ParentContact, ValidCriterionTemplate
 
 
 class CriteriaTableViewTests(TestCase):
@@ -106,3 +106,35 @@ class ParentContactsViewTests(TestCase):
         from django.core.files.uploadedfile import SimpleUploadedFile
 
         return SimpleUploadedFile("parents.csv", content.encode("utf-8"), content_type="text/csv")
+
+class ValidCriteriaViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="admin", password="p")
+        perms = Permission.objects.filter(
+            codename__in=["view_validcriteriontemplate", "add_validcriteriontemplate", "change_validcriteriontemplate"]
+        )
+        self.user.user_permissions.add(*perms)
+        self.client.force_login(self.user)
+
+    def test_create_edit_and_disable_template(self):
+        create_response = self.client.post(
+            reverse("pipeline:valid_criterion_create"),
+            {"name": "Итоговая работа", "is_active": "on"},
+        )
+        self.assertEqual(create_response.status_code, 302)
+        template = ValidCriterionTemplate.objects.get(name="Итоговая работа")
+        self.assertEqual(template.normalized_name, "итоговая работа")
+        self.assertEqual(template.created_by, self.user)
+
+        edit_response = self.client.post(
+            reverse("pipeline:valid_criterion_edit", args=[template.id]),
+            {"name": "  Итоговая   работа  ", "is_active": "on"},
+        )
+        self.assertEqual(edit_response.status_code, 302)
+
+        disable_response = self.client.post(reverse("pipeline:valid_criterion_disable", args=[template.id]))
+        self.assertEqual(disable_response.status_code, 302)
+
+        template.refresh_from_db()
+        self.assertEqual(template.normalized_name, "итоговая работа")
+        self.assertFalse(template.is_active)

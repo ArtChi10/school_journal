@@ -6,8 +6,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from admin_panel.authz import permission_required_403
-from pipeline.forms import ParentContactForm, ParentContactsImportForm
-from pipeline.models import CriterionEntry, ParentContact
+from pipeline.forms import ParentContactForm, ParentContactsImportForm, ValidCriterionTemplateForm
+from pipeline.models import CriterionEntry, ParentContact, ValidCriterionTemplate
 from pipeline.parent_contacts import import_parent_contacts_csv
 
 
@@ -175,3 +175,77 @@ def parent_contacts_import(request):
         f"Импорт завершён: created={result.created}, updated={result.updated}, skipped={result.skipped}, errors={len(result.errors)}",
     )
     return redirect("pipeline:parent_contacts_list")
+
+
+@login_required
+@permission_required_403(
+    "pipeline.view_validcriteriontemplate",
+    message="Доступ запрещён: нет прав на просмотр whitelist критериев.",
+)
+def valid_criteria_list(request):
+    templates = ValidCriterionTemplate.objects.select_related("created_by").order_by("name")
+    return render(
+        request,
+        "pipeline/valid_criteria_list.html",
+        {
+            "templates": templates,
+        },
+    )
+
+
+@login_required
+@permission_required_403(
+    "pipeline.add_validcriteriontemplate",
+    message="Доступ запрещён: нельзя создавать whitelist критерии.",
+)
+def valid_criterion_create(request):
+    if request.method == "POST":
+        form = ValidCriterionTemplateForm(request.POST)
+        if form.is_valid():
+            template = form.save(commit=False)
+            template.created_by = request.user
+            template.save()
+            return redirect("pipeline:valid_criteria_list")
+    else:
+        form = ValidCriterionTemplateForm()
+
+    return render(
+        request,
+        "pipeline/valid_criteria_form.html",
+        {"form": form, "title": "Whitelist критериев: создать", "submit_label": "Сохранить"},
+    )
+
+
+@login_required
+@permission_required_403(
+    "pipeline.change_validcriteriontemplate",
+    message="Доступ запрещён: нельзя редактировать whitelist критерии.",
+)
+def valid_criterion_edit(request, pk):
+    template = get_object_or_404(ValidCriterionTemplate, pk=pk)
+    if request.method == "POST":
+        form = ValidCriterionTemplateForm(request.POST, instance=template)
+        if form.is_valid():
+            form.save()
+            return redirect("pipeline:valid_criteria_list")
+    else:
+        form = ValidCriterionTemplateForm(instance=template)
+
+    return render(
+        request,
+        "pipeline/valid_criteria_form.html",
+        {"form": form, "title": "Whitelist критериев: редактировать", "submit_label": "Сохранить"},
+    )
+
+
+@require_POST
+@login_required
+@permission_required_403(
+    "pipeline.change_validcriteriontemplate",
+    message="Доступ запрещён: нельзя отключать whitelist критерии.",
+)
+def valid_criterion_disable(request, pk):
+    template = get_object_or_404(ValidCriterionTemplate, pk=pk)
+    template.is_active = False
+    template.save(update_fields=["is_active", "updated_at"])
+    return redirect("pipeline:valid_criteria_list")
