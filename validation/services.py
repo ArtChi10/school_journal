@@ -15,6 +15,7 @@ from .rules import (
     RETAKE_REQUIRED_IF_LOW_SCORE,
     TEST_SCORE_MAX,
     TEST_SCORE_MIN,
+    VALID_RETAKE_VALUES,
 )
 
 _CRITERIA_ANCHOR_RU = "критерии оценивания"
@@ -131,6 +132,7 @@ def parse_subject_sheet(ws) -> dict:
             "comment_col": None,
             "retake_col": None,
             "students": [],
+            "column_types": {},
         }
     criteria_row = _find_criteria_header_row(ws, max_row=max_row, max_col=max_col)
     if criteria_row is None:
@@ -145,6 +147,7 @@ def parse_subject_sheet(ws) -> dict:
             "test_cols": [],
             "comment_col": None,
             "retake_col": None,
+            "column_types": {},
             "students": [],
         }
 
@@ -156,6 +159,7 @@ def parse_subject_sheet(ws) -> dict:
     retake_col = None
     test_cols: list[int] = []
     criteria_cols: list[int] = []
+    column_types: dict[int, str] = {}
 
     for col in range(1, max_col + 1):
         criteria_hdr = _normalize_text(ws.cell(row=criteria_row, column=col).value)
@@ -171,15 +175,19 @@ def parse_subject_sheet(ws) -> dict:
 
         if any(k in hdr for k in ("коммент", "comment")):
             comment_col = col
+            column_types[col] = "comment"
             continue
         if any(k in hdr for k in ("пересда", "retake", "resit", "make-up")):
             retake_col = col
+            column_types[col] = "retake"
             continue
         if any(k in hdr for k in ("квиз", "тест", "quiz", "test")):
             test_cols.append(col)
+            column_types[col] = "test"
             continue
 
         criteria_cols.append(col)
+        column_types[col] = "criterion"
 
     students = []
     started = False
@@ -228,6 +236,7 @@ def parse_subject_sheet(ws) -> dict:
         "test_cols": test_cols,
         "comment_col": comment_col,
         "retake_col": retake_col,
+        "column_types": column_types,
         "students": students,
     }
 
@@ -268,6 +277,7 @@ def validate_sheet(ws, sheet_name: str) -> list[ValidationIssue]:
     test_cols = parsed["test_cols"]
     comment_col = parsed["comment_col"]
     retake_col = parsed["retake_col"]
+    column_types = parsed.get("column_types", {})
     for student_info in parsed["students"]:
         row = student_info["row"]
         student_name = student_info["student"]
@@ -288,7 +298,19 @@ def validate_sheet(ws, sheet_name: str) -> list[ValidationIssue]:
                 )
             else:
                 sv = str(v).strip()
-                if sv not in ALLOWED_DESCRIPTOR_VALUES:
+                if _is_numeric(sv):
+                    issues.append(
+                        ValidationIssue(
+                            code="CRITERION_EXPECTS_LEVEL",
+                            severity="warning",
+                            sheet=sheet_name,
+                            row=row,
+                            student=student_name,
+                            field=f"col_{col}",
+                            message=f"В колонке критерия ожидается уровень, получено число: {sv}",
+                        )
+                    )
+                elif sv not in ALLOWED_DESCRIPTOR_VALUES:
                     issues.append(
                         ValidationIssue(
                             code="INVALID_CRITERION_VALUE",
@@ -334,7 +356,22 @@ def validate_sheet(ws, sheet_name: str) -> list[ValidationIssue]:
                         message=f"Тестовый балл не число: {raw}",
                     )
                 )
-
+        if retake_col and column_types.get(retake_col) == "retake":
+            raw_retake = ws.cell(row=row, column=retake_col).value
+            if not _is_empty(raw_retake):
+                normalized_retake = _normalize_text(raw_retake)
+                if normalized_retake not in VALID_RETAKE_VALUES:
+                    issues.append(
+                        ValidationIssue(
+                            code="INVALID_RETAKE_VALUE",
+                            severity="warning",
+                            sheet=sheet_name,
+                            row=row,
+                            student=student_name,
+                            field=f"col_{retake_col}",
+                            message=f"Недопустимое значение пересдачи: {raw_retake}",
+                        )
+                    )
         if low_score_found:
             if COMMENT_REQUIRED_IF_LOW_SCORE and comment_col:
                 c = ws.cell(row=row, column=comment_col).value
@@ -367,3 +404,10 @@ def validate_sheet(ws, sheet_name: str) -> list[ValidationIssue]:
 
 
     return issues
+
+def _is_numeric(value: Any) -> bool:
+    try:
+        float(value)
+        return True
+    except (TypeError, ValueError):
+        return False

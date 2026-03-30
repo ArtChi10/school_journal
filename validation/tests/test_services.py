@@ -230,3 +230,48 @@ class ParseSubjectSheetTests(SimpleTestCase):
 
         self.assertFalse(any(i.code == "EMPTY_CRITERION" for i in issues))
         self.assertFalse(any(i.code == "INVALID_CRITERION_VALUE" for i in issues))
+
+class ValidateSheetColumnTypeTests(SimpleTestCase):
+    def _build_mixed_sheet(self):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Mixed"
+        ws.cell(row=5, column=1, value="Имя")
+        ws.cell(row=5, column=2, value="Фамилия")
+        ws.cell(row=5, column=3, value="Критерий 1")
+        ws.cell(row=5, column=4, value="Тест 1")
+        ws.cell(row=5, column=5, value="Комментарий")
+        ws.cell(row=5, column=6, value="Пересдача")
+        ws.cell(row=6, column=1, value="Алия")
+        ws.cell(row=6, column=2, value="Садыкова")
+        return ws
+
+    def test_criterion_column_rejects_numeric(self):
+        ws = self._build_mixed_sheet()
+        ws.cell(row=6, column=3, value=72)
+        ws.cell(row=6, column=4, value=80)
+
+        issues = validate_sheet(ws, "Mixed")
+
+        self.assertTrue(any(i.code == "CRITERION_EXPECTS_LEVEL" for i in issues))
+        self.assertFalse(any(i.code == "TEST_SCORE_NOT_NUMERIC" for i in issues))
+
+    def test_test_column_accepts_numeric(self):
+        ws = self._build_mixed_sheet()
+        ws.cell(row=6, column=3, value=ALLOWED_DESCRIPTOR)
+        ws.cell(row=6, column=4, value=72)
+
+        issues = validate_sheet(ws, "Mixed")
+
+        self.assertFalse(any(i.code in {"TEST_SCORE_NOT_NUMERIC", "TEST_SCORE_OUT_OF_RANGE"} for i in issues))
+
+    def test_invalid_retake_value(self):
+        ws = self._build_mixed_sheet()
+        ws.cell(row=6, column=3, value=ALLOWED_DESCRIPTOR)
+        ws.cell(row=6, column=4, value=30)
+        ws.cell(row=6, column=5, value="Нужна работа")
+        ws.cell(row=6, column=6, value="Maybe")
+
+        issues = validate_sheet(ws, "Mixed")
+
+        self.assertTrue(any(i.code == "INVALID_RETAKE_VALUE" for i in issues))

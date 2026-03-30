@@ -21,6 +21,20 @@ REQUIRED_HEADER_KEYS = [
 
 TEST_SCORE_MIN = 0
 TEST_SCORE_MAX = 100
+VALID_RETAKE_VALUES = {
+    "да",
+    "нет",
+    "yes",
+    "no",
+    "y",
+    "n",
+    "true",
+    "false",
+    "1",
+    "0",
+    "+",
+    "-",
+}
 
 # пока MVP: комментарий обязателен если есть низкий результат
 LOW_SCORE_THRESHOLD = 50
