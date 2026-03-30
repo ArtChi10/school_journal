@@ -12,8 +12,8 @@ from pipeline.models import CriterionEntry, ValidCriterionTemplate, normalize_cr
 from pipeline.services import (
     CriterionNormalizationError,
     WorkbookReadError,
+    evaluate_criterion_text_with_ai,
     extract_raw_criteria_from_workbook,
-    normalize_criterion_text_with_ai,
 )
 from pipeline.services_download import run_download_descriptors_step
 
