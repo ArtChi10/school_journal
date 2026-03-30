@@ -1,6 +1,6 @@
 import json
 import re
-
+from django.conf import settings
 from django.http import HttpRequest, JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -18,6 +18,65 @@ CONFIRMATION_REGEX = re.compile(
     r"(?:[\s#:]+(?P<job_id>[0-9a-fA-F-]{36}))?\s*[!.]*\s*$",
     re.IGNORECASE,
 )
+
+
+DEFAULT_RECHECK_MAX_CYCLES = 3
+
+
+def _get_recheck_max_cycles() -> int:
+    configured = getattr(settings, "TEACHER_RECHECK_MAX_CYCLES", DEFAULT_RECHECK_MAX_CYCLES)
+    try:
+        value = int(configured)
+    except (TypeError, ValueError):
+        return DEFAULT_RECHECK_MAX_CYCLES
+    return max(1, value)
+
+
+def _detect_next_recheck_cycle(job_run: JobRun, *, teacher_name: str, chat_id: str) -> int:
+    prior_cycles = JobLog.objects.filter(
+        job_run=job_run,
+        message="Teacher recheck triggered",
+        context_json__teacher=teacher_name,
+        context_json__chat_id=chat_id,
+    ).count()
+    return prior_cycles + 1
+
+
+def _send_recheck_result_feedback(contact: TeacherContact, *, source_job_run: JobRun, recheck_job: JobRun, cycle: int) -> None:
+    summary = ((recheck_job.result_json or {}).get("summary") or {})
+    still_invalid = int(summary.get("still_invalid") or 0)
+    failed = int(summary.get("failed") or 0)
+    became_valid = int(summary.get("became_valid") or 0)
+    checked = int(summary.get("checked") or 0)
+
+    if still_invalid > 0 or failed > 0:
+        text = (
+            "Проверка обновлений завершена. Остались невалидные критерии.\n"
+            f"Цикл: {cycle}.\n"
+            f"Проверено: {checked}, исправлено: {became_valid}, осталось: {still_invalid}, ошибок AI: {failed}.\n"
+            "Исправьте критерии и отправьте подтверждение снова."
+        )
+    else:
+        text = (
+            "Отлично, всё ок — невалидных критериев больше нет.\n"
+            f"Цикл: {cycle}.\n"
+            f"Проверено: {checked}, исправлено: {became_valid}."
+        )
+
+    send_telegram(contact.chat_id, text)
+    log_step(
+        job_run=source_job_run,
+        level=JobLog.Level.INFO,
+        message="Teacher recheck feedback sent",
+        context={
+            "teacher": contact.name,
+            "chat_id": str(contact.chat_id),
+            "recheck_job_id": str(recheck_job.id),
+            "cycle": cycle,
+            "still_invalid": still_invalid,
+            "failed": failed,
+        },
+    )
 
 def _find_last_reminder_job(contact: TeacherContact) -> JobRun | None:
     latest_log = (
@@ -106,6 +165,32 @@ def _handle_teacher_confirmation(contact: TeacherContact, text: str) -> str:
             "explicit_job_id": explicit_job_id or "",
         },
     )
+    cycle = _detect_next_recheck_cycle(job_run, teacher_name=contact.name, chat_id=str(contact.chat_id))
+    max_cycles = _get_recheck_max_cycles()
+    if cycle > max_cycles:
+        log_step(
+            job_run=job_run,
+            level=JobLog.Level.WARNING,
+            message="Teacher recheck skipped: max cycles reached",
+            context={
+                "teacher": contact.name,
+                "chat_id": str(contact.chat_id),
+                "cycle": cycle,
+                "max_cycles": max_cycles,
+            },
+        )
+        try:
+            send_telegram(
+                str(contact.chat_id),
+                (
+                    "Достигнут лимит повторных проверок.\n"
+                    f"Текущий цикл: {cycle}, лимит: {max_cycles}.\n"
+                    "Свяжитесь с администратором для ручного разбора."
+                ),
+            )
+        except TelegramSendError:
+            pass
+        return "repeat" if not created else "confirmed"
     recheck_job = run_teacher_recheck_job(source_job_run=job_run, teacher_name=contact.name)
     log_step(
         job_run=job_run,
@@ -113,10 +198,27 @@ def _handle_teacher_confirmation(contact: TeacherContact, text: str) -> str:
         message="Teacher recheck triggered",
         context={
             "teacher": contact.name,
+            "chat_id": str(contact.chat_id),
             "recheck_job_id": str(recheck_job.id),
             "recheck_status": recheck_job.status,
+            "cycle": cycle,
+            "max_cycles": max_cycles,
         },
     )
+    try:
+        _send_recheck_result_feedback(contact, source_job_run=job_run, recheck_job=recheck_job, cycle=cycle)
+    except TelegramSendError:
+        log_step(
+            job_run=job_run,
+            level=JobLog.Level.WARNING,
+            message="Teacher recheck feedback send failed",
+            context={
+                "teacher": contact.name,
+                "chat_id": str(contact.chat_id),
+                "recheck_job_id": str(recheck_job.id),
+                "cycle": cycle,
+            },
+        )
     return "repeat" if not created else "confirmed"
 
 @csrf_exempt
