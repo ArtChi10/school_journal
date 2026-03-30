@@ -15,6 +15,7 @@ from pipeline.job_runner import run_build_criteria_job
 from pipeline.parent_reports_job_runner import run_send_parent_reports_job
 from pipeline.services_download import run_download_descriptors_step
 from pipeline.services_pdf import run_convert_docx_to_pdf_step
+from pipeline.parent_contacts import parent_contacts_to_pipeline_payload
 
 
 PIPELINE_JOB_TYPE = "run_full_pipeline"
@@ -52,6 +53,9 @@ def _step_failed(job_run: JobRun, step_key: str, title: str, reason: str, contex
 
 
 def _resolve_contacts() -> list[dict]:
+    contacts_from_db = parent_contacts_to_pipeline_payload()
+    if contacts_from_db:
+        return contacts_from_db
     contacts_json = (os.getenv("PARENT_REPORTS_CONTACTS_JSON") or "").strip()
     contacts_csv = (os.getenv("PARENT_REPORTS_CONTACTS_CSV") or "").strip()
 

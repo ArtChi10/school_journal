@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>Контакты родителей</title></head>
+<body>
+  <h1>Контакты родителей</h1>
+  <p><a href="{% url 'pipeline:parent_contact_create' %}">Добавить контакт</a></p>
+
+  {% if messages %}
+    <ul>
+      {% for message in messages %}<li>{{ message }}</li>{% endfor %}
+    </ul>
+  {% endif %}
+
+  <form method="get">
+    <label>Параллель: <input type="text" name="parallel" value="{{ filters.parallel }}"></label>
+    <label>Ученик: <input type="text" name="student" value="{{ filters.student }}"></label>
+    <label>Email: <input type="text" name="email" value="{{ filters.email }}"></label>
+    <button type="submit">Фильтр</button>
+  </form>
+
+  <form method="post" enctype="multipart/form-data" action="{% url 'pipeline:parent_contacts_import' %}">
+    {% csrf_token %}
+    {{ import_form.as_p }}
+    <button type="submit">Импортировать файл</button>
+  </form>
+
+  <table border="1" cellpadding="6" cellspacing="0">
+    <thead>
+      <tr>
+        <th>ID</th><th>Параллель</th><th>Класс</th><th>Ученик</th><th>Email 1</th><th>Email 2</th><th>Активен</th><th>Обновлён</th><th>Действия</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in page_obj %}
+      <tr>
+        <td>{{ item.id }}</td>
+        <td>{{ item.parallel }}</td>
+        <td>{{ item.class_code }}</td>
+        <td>{{ item.student_name }}</td>
+        <td>{{ item.parent_email_1 }}</td>
+        <td>{{ item.parent_email_2 }}</td>
+        <td>{{ item.is_active }}</td>
+        <td>{{ item.updated_at }}</td>
+        <td>
+          <a href="{% url 'pipeline:parent_contact_edit' item.id %}">Редактировать</a>
+          {% if item.is_active %}
+          <form method="post" action="{% url 'pipeline:parent_contact_disable' item.id %}" style="display:inline;">
+            {% csrf_token %}
+            <button type="submit">Отключить</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="9">Контактов пока нет.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

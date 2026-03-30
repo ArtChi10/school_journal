@@ -7,7 +7,7 @@
 <body>
    <h1>Классы и таблицы</h1>
 
-  <p>{% if perms.journal_links.add_classsheetlink %}<a href="{% url 'journal_links:create_link' %}">Добавить ссылку</a> · {% endif %}<a href="{% url 'pipeline:criteria_table' %}">Таблица критериев</a></p>
+  <p>{% if perms.journal_links.add_classsheetlink %}<a href="{% url 'journal_links:create_link' %}">Добавить ссылку</a> · {% endif %}<a href="{% url 'pipeline:criteria_table' %}">Таблица критериев</a> · <a href="{% url 'pipeline:parent_contacts_list' %}">Контакты родителей</a></p>
   <table border="1" cellpadding="6" cellspacing="0">
     <thead>
       <tr>

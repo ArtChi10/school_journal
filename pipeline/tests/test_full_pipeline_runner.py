@@ -5,7 +5,8 @@ from unittest.mock import patch
 from django.test import TestCase
 
 from jobs.models import JobLog, JobRun
-from pipeline.full_pipeline_runner import run_full_pipeline
+from pipeline.full_pipeline_runner import _resolve_contacts, run_full_pipeline
+from pipeline.models import ParentContact
 
 
 class FullPipelineRunnerTests(TestCase):
@@ -75,3 +76,21 @@ class FullPipelineRunnerTests(TestCase):
         self.assertEqual(job.result_json["summary"]["steps_failed"], 1)
         self.assertEqual(len(job.result_json["pipeline_steps"]), 1)
         self.assertTrue(JobLog.objects.filter(job_run=job, message="step_failed").exists())
+
+
+class ResolveContactsTests(TestCase):
+    def test_resolve_contacts_prefers_db(self):
+        ParentContact.objects.create(
+            parallel=3,
+            class_code="3A",
+            student_name="Иван Иванов",
+            parent_email_1="p1@example.com",
+            parent_email_2="",
+            is_active=True,
+        )
+
+        contacts = _resolve_contacts()
+
+        self.assertEqual(len(contacts), 1)
+        self.assertEqual(contacts[0]["student"], "Иван Иванов")
+        self.assertEqual(contacts[0]["recipients"][0]["value"], "p1@example.com")

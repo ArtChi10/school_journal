@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>{{ title }}</title></head>
+<body>
+  <h1>{{ title }}</h1>
+  <form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">{{ submit_label }}</button>
+    <a href="{% url 'pipeline:parent_contacts_list' %}">Назад</a>
+  </form>
+</body>
+</html>
