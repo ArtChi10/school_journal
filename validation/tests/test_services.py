@@ -275,3 +275,60 @@ class ValidateSheetColumnTypeTests(SimpleTestCase):
         issues = validate_sheet(ws, "Mixed")
 
         self.assertTrue(any(i.code == "INVALID_RETAKE_VALUE" for i in issues))
+
+
+class ValidateLowScoreRulesTests(SimpleTestCase):
+    def _build_sheet(self):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "LowScore"
+        ws.cell(row=5, column=1, value="Имя")
+        ws.cell(row=5, column=2, value="Фамилия")
+        ws.cell(row=5, column=3, value="Критерий 1")
+        ws.cell(row=5, column=4, value="Тест 1")
+        ws.cell(row=5, column=5, value="Тест 2")
+        ws.cell(row=5, column=6, value="Комментарий")
+        ws.cell(row=5, column=7, value="Пересдача")
+        ws.cell(row=6, column=1, value="Иван")
+        ws.cell(row=6, column=2, value="Иванов")
+        ws.cell(row=6, column=3, value=ALLOWED_DESCRIPTOR)
+        return ws
+
+    def test_comment_required_when_low_score(self):
+        ws = self._build_sheet()
+        ws.cell(row=6, column=4, value=49)
+        ws.cell(row=6, column=5, value=51)
+        ws.cell(row=6, column=6, value="")
+        ws.cell(row=6, column=7, value="да")
+
+        issues = validate_sheet(ws, "LowScore")
+
+        comment_issues = [i for i in issues if i.code == "COMMENT_REQUIRED"]
+        self.assertEqual(len(comment_issues), 1)
+        self.assertIn("col_4", comment_issues[0].message)
+        self.assertIn("49", comment_issues[0].message)
+
+    def test_retake_required_when_low_score(self):
+        ws = self._build_sheet()
+        ws.cell(row=6, column=4, value=49)
+        ws.cell(row=6, column=6, value="Есть прогресс")
+        ws.cell(row=6, column=7, value="")
+
+        issues = validate_sheet(ws, "LowScore")
+
+        retake_issues = [i for i in issues if i.code == "RETAKE_REQUIRED"]
+        self.assertEqual(len(retake_issues), 1)
+        self.assertIn("col_4", retake_issues[0].message)
+        self.assertIn("49", retake_issues[0].message)
+
+    def test_no_low_score_no_comment_retake_requirement(self):
+        ws = self._build_sheet()
+        ws.cell(row=6, column=4, value=51)
+        ws.cell(row=6, column=5, value=80)
+        ws.cell(row=6, column=6, value="")
+        ws.cell(row=6, column=7, value="")
+
+        issues = validate_sheet(ws, "LowScore")
+
+        self.assertFalse(any(i.code == "COMMENT_REQUIRED" for i in issues))
+        self.assertFalse(any(i.code == "RETAKE_REQUIRED" for i in issues))

@@ -324,6 +324,7 @@ def validate_sheet(ws, sheet_name: str) -> list[ValidationIssue]:
                     )
 
         low_score_found = False
+        low_score_context: tuple[int, float] | None = None
         for col in test_cols:
             raw = ws.cell(row=row, column=col).value
             if _is_empty(raw):
@@ -344,6 +345,8 @@ def validate_sheet(ws, sheet_name: str) -> list[ValidationIssue]:
                     )
                 if score < LOW_SCORE_THRESHOLD:
                     low_score_found = True
+                    if low_score_context is None:
+                        low_score_context = (col, score)
             except Exception:
                 issues.append(
                     ValidationIssue(
@@ -373,6 +376,12 @@ def validate_sheet(ws, sheet_name: str) -> list[ValidationIssue]:
                         )
                     )
         if low_score_found:
+            low_score_message_suffix = ""
+            if low_score_context:
+                low_col, low_score = low_score_context
+                low_score_message_suffix = (
+                    f" (тестовая колонка: col_{low_col}, значение: {low_score:g})"
+                )
             if COMMENT_REQUIRED_IF_LOW_SCORE and comment_col:
                 c = ws.cell(row=row, column=comment_col).value
                 if _is_empty(c):
@@ -384,7 +393,10 @@ def validate_sheet(ws, sheet_name: str) -> list[ValidationIssue]:
                             row=row,
                             student=student_name,
                             field=f"col_{comment_col}",
-                            message="Нужен комментарий при низком тестовом балле",
+                            message=(
+                                "Нужен комментарий при низком тестовом балле"
+                                f"{low_score_message_suffix}"
+                            ),
                         )
                     )
             if RETAKE_REQUIRED_IF_LOW_SCORE and retake_col:
@@ -398,7 +410,10 @@ def validate_sheet(ws, sheet_name: str) -> list[ValidationIssue]:
                             row=row,
                             student=student_name,
                             field=f"col_{retake_col}",
-                            message="Нужно указать пересдачу при низком тестовом балле",
+                            message=(
+                                "Нужно указать пересдачу при низком тестовом балле"
+                                f"{low_score_message_suffix}"
+                            ),
                         )
                     )
 
