@@ -5,8 +5,7 @@ from pathlib import Path
 from django.test import SimpleTestCase
 from openpyxl import Workbook
 
-from validation.services import WorkbookReadError, validate_workbook
-
+from validation.services import WorkbookReadError, parse_subject_sheet, validate_workbook
 
 ALLOWED_DESCRIPTOR = "Выполняет самостоятельно | Independent"
 
@@ -120,3 +119,48 @@ class ValidateWorkbookTests(SimpleTestCase):
 
         with self.assertRaises(WorkbookReadError):
             validate_workbook(str(broken_file))
+
+class ParseSubjectSheetTests(SimpleTestCase):
+    def test_parses_metadata_criteria_students_and_values_dynamically(self):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Math"
+
+        ws.cell(row=1, column=2, value="Класс | Grade")
+        ws.cell(row=1, column=3, value="5A")
+        ws.cell(row=2, column=2, value="Учитель | Teacher")
+        ws.cell(row=2, column=3, value="Ms Doe")
+        ws.cell(row=3, column=2, value="Модуль | Module")
+        ws.cell(row=3, column=3, value="3")
+        ws.cell(row=4, column=2, value="Дескриптор | Descriptor")
+        ws.cell(row=4, column=3, value="Term descriptor")
+
+        ws.cell(row=6, column=2, value="Критерии оценивания | Assessment criteria")
+        ws.cell(row=6, column=3, value="Критерий 1")
+        ws.cell(row=6, column=4, value="Критерий 2")
+        ws.cell(row=6, column=5, value="Quiz 1")
+        ws.cell(row=6, column=6, value="Comment")
+        ws.cell(row=6, column=7, value="Retake")
+
+        ws.cell(row=8, column=1, value="Иван")
+        ws.cell(row=8, column=2, value="Иванов")
+        ws.cell(row=8, column=3, value=ALLOWED_DESCRIPTOR)
+        ws.cell(row=8, column=4, value=ALLOWED_DESCRIPTOR)
+        ws.cell(row=8, column=5, value=88)
+        ws.cell(row=8, column=6, value="Good")
+        ws.cell(row=8, column=7, value="-")
+
+        parsed = parse_subject_sheet(ws)
+
+        self.assertEqual(parsed["metadata"]["class"], "5A")
+        self.assertEqual(parsed["metadata"]["teacher"], "Ms Doe")
+        self.assertEqual(parsed["metadata"]["module"], "3")
+        self.assertEqual(parsed["metadata"]["descriptor"], "Term descriptor")
+        self.assertEqual(parsed["criteria_cols"], [3, 4])
+        self.assertEqual(parsed["test_cols"], [5])
+        self.assertEqual(parsed["comment_col"], 6)
+        self.assertEqual(parsed["retake_col"], 7)
+        self.assertEqual(len(parsed["students"]), 1)
+        self.assertEqual(parsed["students"][0]["student"], "Иван Иванов")
+        self.assertEqual(parsed["students"][0]["criteria_values"]["Критерий 1"], ALLOWED_DESCRIPTOR)
+        self.assertEqual(parsed["students"][0]["test_values"]["Quiz 1"], 88)

@@ -1,4 +1,5 @@
 import logging
+import re
 from zipfile import BadZipFile
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -16,7 +17,8 @@ from .rules import (
     TEST_SCORE_MIN,
 )
 
-
+_CRITERIA_ANCHOR_RU = "критерии оценивания"
+_CRITERIA_ANCHOR_EN = "assessment criteria"
 @dataclass
 class ValidationIssue:
     code: str
@@ -36,6 +38,154 @@ logger = logging.getLogger(__name__)
 def _is_empty(v: Any) -> bool:
     return v is None or str(v).strip() == ""
 
+def _normalize_text(value: object) -> str:
+    text = "" if value is None else str(value)
+    text = text.replace("\r\n", "\n").replace("\xa0", " ")
+    text = re.sub(r"\s+", " ", text)
+    return text.strip().lower()
+
+
+def _find_criteria_header_row(ws) -> int | None:
+    for row_num in range(1, ws.max_row + 1):
+        anchor_row_text = " | ".join(
+            _normalize_text(ws.cell(row=row_num, column=col).value)
+            for col in range(1, ws.max_column + 1)
+        )
+        if _CRITERIA_ANCHOR_RU in anchor_row_text and _CRITERIA_ANCHOR_EN in anchor_row_text:
+            return row_num
+
+    # Fallback for legacy sheets without explicit RU/EN anchor
+    for row_num in range(1, ws.max_row + 1):
+        row_headers = [
+            _normalize_text(ws.cell(row=row_num, column=col).value)
+            for col in range(1, ws.max_column + 1)
+        ]
+        has_name_columns = any(h in ("имя", "name", "first name") for h in row_headers) and any(
+            "фам" in h or h in ("surname", "last name") for h in row_headers
+        )
+        has_assessment_columns = any(
+            any(k in h for k in ("критер", "тест", "quiz", "comment", "коммент", "retake", "пересда"))
+            for h in row_headers
+        )
+        if has_name_columns and has_assessment_columns:
+            return row_num
+
+    return None
+
+
+def _detect_student_name_columns(ws, header_row: int) -> tuple[int, int]:
+    first_name_col = 1
+    last_name_col = 2
+
+    for col in range(1, ws.max_column + 1):
+        hdr = _normalize_text(ws.cell(row=header_row, column=col).value)
+        if any(token in hdr for token in ("имя", "first", "name")):
+            first_name_col = col
+        if any(token in hdr for token in ("фам", "last", "surname")):
+            last_name_col = col
+
+    return first_name_col, last_name_col
+
+
+def parse_subject_sheet(ws) -> dict:
+    """Parse one subject sheet with dynamic anchors/columns/students range."""
+    metadata = {
+        "class": str(ws.cell(row=1, column=3).value or "").strip(),
+        "teacher": str(ws.cell(row=2, column=3).value or "").strip(),
+        "module": str(ws.cell(row=3, column=3).value or "").strip(),
+        "descriptor": str(ws.cell(row=4, column=3).value or "").strip(),
+    }
+
+    criteria_row = _find_criteria_header_row(ws)
+    if criteria_row is None:
+        return {
+            "metadata": metadata,
+            "criteria_row": None,
+            "first_name_col": 1,
+            "last_name_col": 2,
+            "criteria_cols": [],
+            "test_cols": [],
+            "comment_col": None,
+            "retake_col": None,
+            "students": [],
+        }
+
+    first_name_col, last_name_col = _detect_student_name_columns(ws, criteria_row)
+
+    comment_col = None
+    retake_col = None
+    test_cols: list[int] = []
+    criteria_cols: list[int] = []
+
+    for col in range(1, ws.max_column + 1):
+        hdr = _normalize_text(ws.cell(row=criteria_row, column=col).value)
+        if not hdr:
+            continue
+
+        if col in (first_name_col, last_name_col):
+            continue
+        if _CRITERIA_ANCHOR_RU in hdr or _CRITERIA_ANCHOR_EN in hdr:
+            continue
+
+        if any(k in hdr for k in ("коммент", "comment")):
+            comment_col = col
+            continue
+        if any(k in hdr for k in ("пересда", "retake", "resit", "make-up")):
+            retake_col = col
+            continue
+        if any(k in hdr for k in ("квиз", "тест", "quiz", "test")):
+            test_cols.append(col)
+            continue
+
+        criteria_cols.append(col)
+
+    students = []
+    started = False
+    for row in range(criteria_row + 1, ws.max_row + 1):
+        first = ws.cell(row=row, column=first_name_col).value
+        last = ws.cell(row=row, column=last_name_col).value
+
+        if _is_empty(first) and _is_empty(last):
+            if started:
+                break
+            continue
+
+        started = True
+        student_name = f"{first or ''} {last or ''}".strip()
+
+        criteria_values = {
+            str(ws.cell(row=criteria_row, column=col).value or "").strip(): ws.cell(row=row, column=col).value
+            for col in criteria_cols
+        }
+        test_values = {
+            str(ws.cell(row=criteria_row, column=col).value or "").strip(): ws.cell(row=row, column=col).value
+            for col in test_cols
+        }
+
+        students.append(
+            {
+                "row": row,
+                "first": first,
+                "last": last,
+                "student": student_name,
+                "criteria_values": criteria_values,
+                "test_values": test_values,
+                "comment": ws.cell(row=row, column=comment_col).value if comment_col else None,
+                "retake": ws.cell(row=row, column=retake_col).value if retake_col else None,
+            }
+        )
+
+    return {
+        "metadata": metadata,
+        "criteria_row": criteria_row,
+        "first_name_col": first_name_col,
+        "last_name_col": last_name_col,
+        "criteria_cols": criteria_cols,
+        "test_cols": test_cols,
+        "comment_col": comment_col,
+        "retake_col": retake_col,
+        "students": students,
+    }
 
 def validate_workbook(path: str) -> dict:
     try:
@@ -69,51 +219,16 @@ def validate_workbook(path: str) -> dict:
 
 def validate_sheet(ws, sheet_name: str) -> list[ValidationIssue]:
     issues: list[ValidationIssue] = []
+    parsed = parse_subject_sheet(ws)
+    criteria_cols = parsed["criteria_cols"]
+    test_cols = parsed["test_cols"]
+    comment_col = parsed["comment_col"]
+    retake_col = parsed["retake_col"]
+    for student_info in parsed["students"]:
+        row = student_info["row"]
+        student_name = student_info["student"]
 
-    # MVP-упрощение:
-    # строка критериев = 5, ученики с 7-й (как в ваших таблицах)
-    criteria_row = 5
-    student_start_row = 7
-
-    # Найдём колонки:
-    # A имя, B фамилия, C.. критерии, далее тесты, комментарий, пересдача
-    max_col = ws.max_column
-
-    # Пытаемся найти столбцы "Комментарий"/"Пересдача" по заголовку строки criteria_row
-    comment_col = None
-    retake_col = None
-    test_cols = []
-
-    for col in range(1, max_col + 1):
-        hdr = ws.cell(row=criteria_row, column=col).value
-        h = str(hdr).strip().lower() if hdr else ""
-
-        if "коммент" in h or "comment" in h:
-            comment_col = col
-        elif "пересда" in h or "retake" in h or "resit" in h:
-            retake_col = col
-        elif "квиз" in h or "тест" in h or "quiz" in h or "test" in h:
-            test_cols.append(col)
-
-    # Пробег по ученикам
-    row = student_start_row
-    while row <= ws.max_row:
-        first = ws.cell(row=row, column=1).value
-        last = ws.cell(row=row, column=2).value
-
-        # конец списка учеников
-        if _is_empty(first) and _is_empty(last):
-            row += 1
-            continue
-
-        student_name = f"{first or ''} {last or ''}".strip()
-
-        # 1) Проверка дескрипторных ячеек (грубая MVP-логика):
-        # считаем критериями диапазон C..(до первой test/comment/retake колонки)
-        stop_col_candidates = [c for c in [comment_col, retake_col, *(test_cols or [])] if c]
-        criteria_end = min(stop_col_candidates) - 1 if stop_col_candidates else max_col
-
-        for col in range(3, criteria_end + 1):
+        for col in criteria_cols:
             v = ws.cell(row=row, column=col).value
             if _is_empty(v):
                 issues.append(
@@ -142,7 +257,6 @@ def validate_sheet(ws, sheet_name: str) -> list[ValidationIssue]:
                         )
                     )
 
-        # 2) Проверка тестовых баллов
         low_score_found = False
         for col in test_cols:
             raw = ws.cell(row=row, column=col).value
@@ -177,7 +291,6 @@ def validate_sheet(ws, sheet_name: str) -> list[ValidationIssue]:
                     )
                 )
 
-        # 3) Обязательность комментария/пересдачи при низком балле
         if low_score_found:
             if COMMENT_REQUIRED_IF_LOW_SCORE and comment_col:
                 c = ws.cell(row=row, column=comment_col).value
@@ -208,6 +321,5 @@ def validate_sheet(ws, sheet_name: str) -> list[ValidationIssue]:
                         )
                     )
 
-        row += 1
 
     return issues
