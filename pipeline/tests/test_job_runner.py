@@ -73,6 +73,8 @@ class BuildCriteriaJobTests(TestCase):
         saved_rows = CriterionEntry.objects.filter(class_code="4A")
         self.assertEqual(saved_rows.count(), 3)
         self.assertEqual(saved_rows.exclude(criterion_text_ai="").count(), 2)
+        self.assertEqual(saved_rows.filter(validation_status=CriterionEntry.ValidationStatus.VALID).count(), 2)
+        self.assertEqual(saved_rows.filter(validation_status=CriterionEntry.ValidationStatus.INVALID).count(), 1)
 
     def test_management_command_supports_class_code(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -134,6 +136,12 @@ class BuildCriteriaJobTests(TestCase):
         )
         self.assertTrue(CriterionEntry.objects.filter(criterion_text="Итоговая работа",
                                                       criterion_text_ai="Итоговая работа").exists())
+        self.assertTrue(
+            CriterionEntry.objects.filter(
+                criterion_text="Итоговая работа",
+                validation_status=CriterionEntry.ValidationStatus.OVERRIDE,
+            ).exists()
+        )
 
     def test_disabled_whitelist_template_sends_criterion_to_ai(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -161,3 +169,15 @@ class BuildCriteriaJobTests(TestCase):
                 run_build_criteria_job(class_code="4A")
 
         self.assertEqual(ai_mock.call_count, 3)
+
+    def test_new_criterion_entry_defaults_to_pending(self):
+        entry = CriterionEntry.objects.create(
+            class_code="7A",
+            subject_name="Physics",
+            teacher_name="Ms. Photon",
+            module_number=1,
+            criterion_text="Критерий P1",
+            source_sheet_name="Physics",
+            source_workbook="criteria.xlsx",
+        )
+        self.assertEqual(entry.validation_status, CriterionEntry.ValidationStatus.PENDING)

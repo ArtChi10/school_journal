@@ -59,6 +59,15 @@
             {% endfor %}
           </select>
         </div>
+          <div class="col-12 col-md-6 col-xl-3">
+          <label class="form-label" for="id_validation_status">Статус</label>
+          <select id="id_validation_status" name="validation_status" class="form-select">
+            <option value="">Все</option>
+            {% for status_value, status_label in status_choices %}
+              <option value="{{ status_value }}" {% if filters.validation_status == status_value %}selected{% endif %}>{{ status_label }}</option>
+            {% endfor %}
+          </select>
+        </div>
         <div class="col-12 d-flex flex-wrap gap-2">
           <button class="btn btn-primary" type="submit">Применить фильтры</button>
           <a class="btn btn-outline-secondary" href="{% url 'pipeline:criteria_table' %}">Сбросить</a>
@@ -91,11 +100,9 @@
                 <td>{{ row.criterion_text }}</td>
                 <td>{{ row.criterion_text_ai|default:"" }}</td>
                 <td>
-                  {% if row.criterion_text_ai %}
-                    <span class="badge badge-soft badge-success">ok</span>
-                  {% else %}
-                    <span class="badge badge-soft badge-failed">failed</span>
-                  {% endif %}
+                  <span class="badge badge-soft {% if row.validation_status == 'valid' or row.validation_status == 'override' %}badge-success{% elif row.validation_status == 'pending' %}badge-warn{% else %}badge-failed{% endif %}">
+                    {{ row.get_validation_status_display }}
+                  </span>
                 </td>
               </tr>
             {% empty %}

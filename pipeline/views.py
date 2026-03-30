@@ -40,7 +40,9 @@ def criteria_table(request):
     module_number = _parse_non_empty(request.GET.get("module_number"))
     if module_number:
         queryset = queryset.filter(module_number=module_number)
-
+    validation_status = _parse_non_empty(request.GET.get("validation_status"))
+    if validation_status:
+        queryset = queryset.filter(validation_status=validation_status)
     paginator = Paginator(queryset, 50)
     page_obj = paginator.get_page(request.GET.get("page"))
 
@@ -62,11 +64,13 @@ def criteria_table(request):
             "module_choices": CriterionEntry.objects.values_list("module_number", flat=True)
             .distinct()
             .order_by("module_number"),
+            "status_choices": CriterionEntry.ValidationStatus.choices,
             "filters": {
                 "class_code": class_code or "",
                 "teacher_name": teacher_name or "",
                 "subject_name": subject_name or "",
                 "module_number": module_number or "",
+                "validation_status": validation_status or "",
             },
             "querystring": preserved_query.urlencode(),
         },

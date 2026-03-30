@@ -9,11 +9,13 @@ class CriterionEntryAdmin(admin.ModelAdmin):
         "class_code",
         "subject_name",
         "module_number",
+        "validation_status",
+        "needs_recheck",
         "teacher_name",
         "source_sheet_name",
         "updated_at",
     )
-    list_filter = ("class_code", "subject_name", "module_number", "teacher_name")
+    list_filter = ("validation_status", "needs_recheck", "class_code", "subject_name", "module_number", "teacher_name")
     search_fields = (
         "class_code",
         "subject_name",

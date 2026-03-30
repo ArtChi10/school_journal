@@ -17,6 +17,7 @@ class CriteriaTableViewTests(TestCase):
             module_number=2,
             criterion_text="Критерий 1",
             criterion_text_ai="Нормализованный критерий",
+            validation_status=CriterionEntry.ValidationStatus.VALID,
             source_sheet_name="Math",
             source_workbook="criteria.xlsx",
         )
@@ -27,6 +28,7 @@ class CriteriaTableViewTests(TestCase):
             module_number=1,
             criterion_text="Критерий 2",
             criterion_text_ai="",
+            validation_status=CriterionEntry.ValidationStatus.INVALID,
             source_sheet_name="History",
             source_workbook="criteria.xlsx",
         )
@@ -39,6 +41,17 @@ class CriteriaTableViewTests(TestCase):
         self.assertIn("Критерий 1", page)
         self.assertNotIn("Критерий 2", page)
         self.assertIn("Нормализованный критерий", page)
+
+    def test_filters_by_validation_status(self):
+        response = self.client.get(
+            reverse("pipeline:criteria_table"),
+            {"validation_status": CriterionEntry.ValidationStatus.INVALID},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        page = response.content.decode("utf-8")
+        self.assertIn("Критерий 2", page)
+        self.assertNotIn("Критерий 1", page)
 
 
 class ParentContactsViewTests(TestCase):

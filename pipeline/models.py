@@ -9,12 +9,29 @@ def normalize_criterion_name(value: str) -> str:
     return text
 
 class CriterionEntry(models.Model):
+    class ValidationStatus(models.TextChoices):
+        PENDING = "pending", "Pending"
+        VALID = "valid", "Valid"
+        INVALID = "invalid", "Invalid"
+        OVERRIDE = "override", "Override"
+        RECHECK = "recheck", "Recheck"
     class_code = models.CharField(max_length=64)
     subject_name = models.CharField(max_length=255)
     teacher_name = models.CharField(max_length=255)
     module_number = models.PositiveIntegerField()
     criterion_text = models.TextField()
     criterion_text_ai = models.TextField(blank=True, default="")
+    validation_status = models.CharField(
+        max_length=16,
+        choices=ValidationStatus.choices,
+        default=ValidationStatus.PENDING,
+    )
+    ai_verdict = models.CharField(max_length=32, blank=True, default="")
+    ai_why = models.TextField(blank=True, default="")
+    ai_fix_suggestion = models.TextField(blank=True, default="")
+    ai_variants_json = models.JSONField(blank=True, default=list)
+    needs_recheck = models.BooleanField(default=False)
+    last_checked_at = models.DateTimeField(null=True, blank=True)
     source_sheet_name = models.CharField(max_length=255)
     source_workbook = models.CharField(max_length=500)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -30,6 +47,7 @@ class CriterionEntry(models.Model):
         indexes = [
             models.Index(fields=["class_code", "subject_name"]),
             models.Index(fields=["module_number"]),
+            models.Index(fields=["validation_status"]),
         ]
         ordering = ["class_code", "subject_name", "module_number", "criterion_text"]
 

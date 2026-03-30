@@ -103,9 +103,20 @@ def run_build_criteria_job(
                         total_sheets_keys.add((row["source_workbook"], row["source_sheet_name"]))
 
                         criterion_text_ai = ""
+                        validation_status = CriterionEntry.ValidationStatus.PENDING
+                        ai_verdict = ""
+                        ai_why = ""
+                        ai_fix_suggestion = ""
+                        ai_variants_json = []
+                        needs_recheck = False
+                        last_checked_at = None
                         normalized_name = normalize_criterion_name(row["criterion_text"])
                         if normalized_name in active_valid_templates:
                             criterion_text_ai = row["criterion_text"]
+                            validation_status = CriterionEntry.ValidationStatus.OVERRIDE
+                            ai_verdict = "override"
+                            ai_why = "Validated by whitelist template."
+                            last_checked_at = timezone.now()
                             log_step(
                                 job_run=job_run,
                                 level=JobLog.Level.INFO,
@@ -123,8 +134,25 @@ def run_build_criteria_job(
                                 criterion_text_ai = normalize_criterion_text_with_ai(row["criterion_text"])
                                 if criterion_text_ai:
                                     ai_ok += 1
+                                    validation_status = CriterionEntry.ValidationStatus.VALID
+                                    ai_verdict = "valid"
+                                    ai_why = "AI normalization succeeded."
+                                    last_checked_at = timezone.now()
+                                else:
+                                    validation_status = CriterionEntry.ValidationStatus.INVALID
+                                    ai_verdict = "invalid"
+                                    ai_why = "AI returned an empty normalization result."
+                                    ai_fix_suggestion = "Уточните формулировку критерия и запустите проверку повторно."
+                                    needs_recheck = True
+                                    last_checked_at = timezone.now()
                             except CriterionNormalizationError:
                                 ai_failed += 1
+                                validation_status = CriterionEntry.ValidationStatus.INVALID
+                                ai_verdict = "invalid"
+                                ai_why = "AI normalization failed."
+                                ai_fix_suggestion = "Проверьте критерий вручную и запустите recheck."
+                                needs_recheck = True
+                                last_checked_at = timezone.now()
 
                         _, _created = CriterionEntry.objects.update_or_create(
                             class_code=row["class_code"],
@@ -134,6 +162,13 @@ def run_build_criteria_job(
                             defaults={
                                 "teacher_name": row["teacher_name"],
                                 "criterion_text_ai": criterion_text_ai,
+                                "validation_status": validation_status,
+                                "ai_verdict": ai_verdict,
+                                "ai_why": ai_why,
+                                "ai_fix_suggestion": ai_fix_suggestion,
+                                "ai_variants_json": ai_variants_json,
+                                "needs_recheck": needs_recheck,
+                                "last_checked_at": last_checked_at,
                                 "source_sheet_name": row["source_sheet_name"],
                                 "source_workbook": row["source_workbook"],
                             },
