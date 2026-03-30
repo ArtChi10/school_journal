@@ -9,6 +9,7 @@ from jobs.models import JobLog, JobRun
 from jobs.services import log_step
 
 from .models import TeacherConfirmation, TeacherContact
+from .recheck import run_teacher_recheck_job
 from .services import TelegramSendError, send_telegram
 
 
@@ -103,6 +104,17 @@ def _handle_teacher_confirmation(contact: TeacherContact, text: str) -> str:
             "is_repeat": not created,
             "message_text": text,
             "explicit_job_id": explicit_job_id or "",
+        },
+    )
+    recheck_job = run_teacher_recheck_job(source_job_run=job_run, teacher_name=contact.name)
+    log_step(
+        job_run=job_run,
+        level=JobLog.Level.INFO,
+        message="Teacher recheck triggered",
+        context={
+            "teacher": contact.name,
+            "recheck_job_id": str(recheck_job.id),
+            "recheck_status": recheck_job.status,
         },
     )
     return "repeat" if not created else "confirmed"
