@@ -14,7 +14,14 @@ def _build_valid_workbook(path: Path) -> None:
     wb = Workbook()
     ws = wb.active
     ws.title = "Grade5A"
-
+    ws.cell(row=1, column=2, value="Класс | Grade")
+    ws.cell(row=1, column=3, value="5A")
+    ws.cell(row=2, column=2, value="Учитель | Teacher")
+    ws.cell(row=2, column=3, value="Ms Doe")
+    ws.cell(row=3, column=2, value="Модуль | Module")
+    ws.cell(row=3, column=3, value="1")
+    ws.cell(row=4, column=2, value="Дескриптор | Descriptor")
+    ws.cell(row=4, column=3, value="Term descriptor")
     ws.cell(row=5, column=1, value="Имя")
     ws.cell(row=5, column=2, value="Фамилия")
     ws.cell(row=5, column=3, value="Критерий 1")
@@ -77,9 +84,12 @@ class ValidateWorkbookTests(SimpleTestCase):
         self.assertEqual(set(result.keys()), {"summary", "issues"})
         self.assertEqual(
             set(result["summary"].keys()),
-            {"total", "critical", "warning", "info"},
+            {"total", "critical", "warning", "info", "sheets_skipped"},
         )
-        self.assertEqual(result["summary"], {"total": 0, "critical": 0, "warning": 0, "info": 0})
+        self.assertEqual(
+            result["summary"],
+            {"total": 0, "critical": 0, "warning": 0, "info": 0, "sheets_skipped": 0},
+        )
         self.assertEqual(result["issues"], [])
 
         # ручная проверка JSON-формата (сериализация без ошибок)
@@ -91,9 +101,10 @@ class ValidateWorkbookTests(SimpleTestCase):
         result = validate_workbook(str(self.problem_file))
 
         self.assertGreater(result["summary"]["total"], 0)
-        self.assertEqual(result["summary"]["critical"], 2)
-        self.assertEqual(result["summary"]["warning"], 2)
+        self.assertEqual(result["summary"]["critical"], 5)
+        self.assertEqual(result["summary"]["warning"], 3)
         self.assertEqual(result["summary"]["info"], 0)
+        self.assertEqual(result["summary"]["sheets_skipped"], 0)
 
         self.assertEqual(len(result["issues"]), result["summary"]["total"])
 
@@ -120,6 +131,71 @@ class ValidateWorkbookTests(SimpleTestCase):
         with self.assertRaises(WorkbookReadError):
             validate_workbook(str(broken_file))
 
+    def test_tutor_sheet_skipped(self):
+        workbook_file = Path(self._tmpdir.name) / "tutor_skipped.xlsx"
+        wb = Workbook()
+
+        ws_subject = wb.active
+        ws_subject.title = "Math"
+        ws_subject.cell(row=5, column=1, value="Имя")
+        ws_subject.cell(row=5, column=2, value="Фамилия")
+        ws_subject.cell(row=5, column=3, value="Критерий 1")
+        ws_subject.cell(row=6, column=1, value="Иван")
+        ws_subject.cell(row=6, column=2, value="Иванов")
+        ws_subject.cell(row=6, column=3, value=ALLOWED_DESCRIPTOR)
+
+        ws_tutor = wb.create_sheet("Тьютор | Tutor")
+        ws_tutor.cell(row=5, column=1, value="Имя")
+        ws_tutor.cell(row=5, column=2, value="Фамилия")
+        ws_tutor.cell(row=5, column=3, value="Критерий 1")
+        ws_tutor.cell(row=6, column=1, value="Анна")
+        ws_tutor.cell(row=6, column=2, value="Петрова")
+        ws_tutor.cell(row=6, column=3, value="")
+
+        wb.save(workbook_file)
+
+        with self.assertLogs("validation.services", level="INFO") as captured_logs:
+            result = validate_workbook(str(workbook_file))
+
+        self.assertEqual(result["summary"]["critical"], 0)
+        self.assertEqual(result["summary"]["warning"], 0)
+        self.assertEqual(result["summary"]["sheets_skipped"], 1)
+        self.assertFalse(any(issue["sheet"] == "Тьютор | Tutor" for issue in result["issues"]))
+        self.assertTrue(any("Skipping sheet 'Тьютор | Tutor' with type 'tutor'" in log for log in captured_logs.output))
+
+    def test_workbook_with_tutor_and_subject_sheets(self):
+        workbook_file = Path(self._tmpdir.name) / "tutor_and_subject.xlsx"
+        wb = Workbook()
+
+        ws_subject = wb.active
+        ws_subject.title = "Biology"
+        ws_subject.cell(row=5, column=1, value="Имя")
+        ws_subject.cell(row=5, column=2, value="Фамилия")
+        ws_subject.cell(row=5, column=3, value="Критерий 1")
+        ws_subject.cell(row=5, column=4, value="Тест 1")
+        ws_subject.cell(row=5, column=5, value="Комментарий")
+        ws_subject.cell(row=5, column=6, value="Пересдача")
+        ws_subject.cell(row=6, column=1, value="Олег")
+        ws_subject.cell(row=6, column=2, value="Сергеев")
+        ws_subject.cell(row=6, column=3, value=ALLOWED_DESCRIPTOR)
+        ws_subject.cell(row=6, column=4, value=80)
+
+        ws_tutor = wb.create_sheet("Tutor support")
+        ws_tutor.cell(row=5, column=1, value="Имя")
+        ws_tutor.cell(row=5, column=2, value="Фамилия")
+        ws_tutor.cell(row=5, column=3, value="Критерий 1")
+        ws_tutor.cell(row=6, column=1, value="Анна")
+        ws_tutor.cell(row=6, column=2, value="Петрова")
+        ws_tutor.cell(row=6, column=3, value="")
+
+        wb.save(workbook_file)
+
+        result = validate_workbook(str(workbook_file))
+
+        self.assertEqual(result["summary"]["total"], 0)
+        self.assertEqual(result["summary"]["critical"], 0)
+        self.assertEqual(result["summary"]["warning"], 0)
+        self.assertEqual(result["summary"]["sheets_skipped"], 1)
 class ParseSubjectSheetTests(SimpleTestCase):
     def test_parses_metadata_criteria_students_and_values_dynamically(self):
         wb = Workbook()
@@ -332,3 +408,57 @@ class ValidateLowScoreRulesTests(SimpleTestCase):
 
         self.assertFalse(any(i.code == "COMMENT_REQUIRED" for i in issues))
         self.assertFalse(any(i.code == "RETAKE_REQUIRED" for i in issues))
+
+
+class ValidateSheetMetadataTests(SimpleTestCase):
+    def _build_sheet_with_meta(self):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Meta"
+        ws.cell(row=1, column=2, value="Класс | Grade")
+        ws.cell(row=1, column=3, value="5A")
+        ws.cell(row=2, column=2, value="Учитель | Teacher")
+        ws.cell(row=2, column=3, value="Ms Doe")
+        ws.cell(row=3, column=2, value="Модуль | Module")
+        ws.cell(row=3, column=3, value="1")
+        ws.cell(row=4, column=2, value="Дескриптор | Descriptor")
+        ws.cell(row=4, column=3, value="Term descriptor")
+
+        ws.cell(row=6, column=2, value="Критерии оценивания | Assessment criteria")
+        ws.cell(row=6, column=3, value="Критерий 1")
+        ws.cell(row=7, column=1, value="Имя")
+        ws.cell(row=7, column=2, value="Фамилия")
+        return ws
+
+    def test_missing_teacher_meta(self):
+        ws = self._build_sheet_with_meta()
+        ws.cell(row=2, column=3, value="")
+
+        issues = validate_sheet(ws, "Meta")
+
+        teacher_issues = [i for i in issues if i.code == "MISSING_TEACHER_META"]
+        self.assertEqual(len(teacher_issues), 1)
+        self.assertEqual(teacher_issues[0].severity, "critical")
+        self.assertEqual(teacher_issues[0].row, 2)
+
+    def test_invalid_module_meta(self):
+        ws = self._build_sheet_with_meta()
+        ws.cell(row=3, column=3, value="module-one")
+
+        issues = validate_sheet(ws, "Meta")
+
+        module_issues = [i for i in issues if i.code == "INVALID_MODULE_META"]
+        self.assertEqual(len(module_issues), 1)
+        self.assertEqual(module_issues[0].severity, "warning")
+        self.assertEqual(module_issues[0].row, 3)
+
+    def test_missing_descriptor_meta(self):
+        ws = self._build_sheet_with_meta()
+        ws.cell(row=4, column=3, value="")
+
+        issues = validate_sheet(ws, "Meta")
+
+        descriptor_issues = [i for i in issues if i.code == "MISSING_DESCRIPTOR_META"]
+        self.assertEqual(len(descriptor_issues), 1)
+        self.assertEqual(descriptor_issues[0].severity, "critical")
+        self.assertEqual(descriptor_issues[0].row, 4)

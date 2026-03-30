@@ -12,6 +12,7 @@ from .rules import (
     ALLOWED_DESCRIPTOR_VALUES,
     COMMENT_REQUIRED_IF_LOW_SCORE,
     LOW_SCORE_THRESHOLD,
+    REQUIRED_HEADER_KEYS,
     RETAKE_REQUIRED_IF_LOW_SCORE,
     TEST_SCORE_MAX,
     TEST_SCORE_MIN,
@@ -35,7 +36,13 @@ class WorkbookReadError(ValueError):
 
 
 logger = logging.getLogger(__name__)
-
+def _classify_sheet_type(sheet_name: str) -> str:
+    normalized_name = (sheet_name or "").strip().lower()
+    if "тьютор" in normalized_name or "tutor" in normalized_name:
+        return "tutor"
+    if "служеб" in normalized_name or "service" in normalized_name:
+        return "service"
+    return "subject"
 def _is_empty(v: Any) -> bool:
     return v is None or str(v).strip() == ""
 
@@ -252,9 +259,24 @@ def validate_workbook(path: str) -> dict:
         raise WorkbookReadError(f"Cannot read workbook: {path}") from exc
 
     issues: list[ValidationIssue] = []
+    sheets_skipped = 0
 
     for sheet_name in wb.sheetnames:
         ws = wb[sheet_name]
+        sheet_type = _classify_sheet_type(sheet_name)
+        if sheet_type in {"tutor", "service"}:
+            sheets_skipped += 1
+            logger.info(
+                "Skipping sheet '%s' with type '%s' in validation profile",
+                sheet_name,
+                sheet_type,
+            )
+            continue
+        logger.debug(
+            "Validating sheet '%s' with type '%s' using subject profile",
+            sheet_name,
+            sheet_type,
+        )
         issues.extend(validate_sheet(ws, sheet_name))
 
     summary = {
@@ -262,6 +284,7 @@ def validate_workbook(path: str) -> dict:
         "critical": sum(1 for i in issues if i.severity == "critical"),
         "warning": sum(1 for i in issues if i.severity == "warning"),
         "info": sum(1 for i in issues if i.severity == "info"),
+        "sheets_skipped": sheets_skipped,
     }
 
     return {
@@ -273,6 +296,66 @@ def validate_workbook(path: str) -> dict:
 def validate_sheet(ws, sheet_name: str) -> list[ValidationIssue]:
     issues: list[ValidationIssue] = []
     parsed = parse_subject_sheet(ws)
+    metadata = parsed.get("metadata", {})
+    for key in REQUIRED_HEADER_KEYS:
+        metadata.setdefault(key, "")
+
+    class_meta = str(metadata.get("class", "")).strip()
+    if _is_empty(class_meta):
+        issues.append(
+            ValidationIssue(
+                code="MISSING_CLASS_META",
+                severity="critical",
+                sheet=sheet_name,
+                row=1,
+                student=None,
+                field="meta_class",
+                message="Не заполнено поле «Класс | Grade» (C1). Заполните класс в ячейке C1.",
+            )
+        )
+
+    teacher_meta = str(metadata.get("teacher", "")).strip()
+    if _is_empty(teacher_meta):
+        issues.append(
+            ValidationIssue(
+                code="MISSING_TEACHER_META",
+                severity="critical",
+                sheet=sheet_name,
+                row=2,
+                student=None,
+                field="meta_teacher",
+                message="Не заполнено поле «Учитель | Teacher» (C2). Укажите ФИО учителя в ячейке C2.",
+            )
+        )
+
+    module_meta = str(metadata.get("module", "")).strip()
+    if not _is_numeric(module_meta):
+        issues.append(
+            ValidationIssue(
+                code="INVALID_MODULE_META",
+                severity="warning",
+                sheet=sheet_name,
+                row=3,
+                student=None,
+                field="meta_module",
+                message="Поле «Учебный модуль | Module» (C3) должно быть числом. Укажите номер модуля цифрой (например, 1, 2, 3).",
+            )
+        )
+
+    descriptor_meta = str(metadata.get("descriptor", "")).strip()
+    if _is_empty(descriptor_meta):
+        issues.append(
+            ValidationIssue(
+                code="MISSING_DESCRIPTOR_META",
+                severity="critical",
+                sheet=sheet_name,
+                row=4,
+                student=None,
+                field="meta_descriptor",
+                message="Не заполнено поле «Дескриптор | Descriptor» (C4). Заполните описание дескриптора в ячейке C4.",
+            )
+        )
+
     criteria_cols = parsed["criteria_cols"]
     test_cols = parsed["test_cols"]
     comment_col = parsed["comment_col"]
