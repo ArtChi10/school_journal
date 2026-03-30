@@ -1,3 +1,4 @@
+import json
 from django.contrib.auth.models import Permission, User
 from django.test import TestCase
 from django.urls import reverse
@@ -52,6 +53,73 @@ class CriteriaTableViewTests(TestCase):
         page = response.content.decode("utf-8")
         self.assertIn("Критерий 2", page)
         self.assertNotIn("Критерий 1", page)
+
+class CriteriaFailuresViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="qa", password="p")
+        self.user.user_permissions.add(Permission.objects.get(codename="view_criterionentry"))
+        self.client.force_login(self.user)
+        CriterionEntry.objects.create(
+            class_code="4A",
+            subject_name="Math",
+            teacher_name="Ms. Frizzle",
+            module_number=2,
+            criterion_text="Проблемный критерий",
+            validation_status=CriterionEntry.ValidationStatus.INVALID,
+            ai_verdict="invalid",
+            ai_why="Слишком размытая формулировка",
+            ai_fix_suggestion="Уточнить ожидаемый результат обучения",
+            needs_recheck=True,
+            source_sheet_name="Math",
+            source_workbook="criteria.xlsx",
+        )
+        CriterionEntry.objects.create(
+            class_code="4A",
+            subject_name="Math",
+            teacher_name="Ms. Frizzle",
+            module_number=3,
+            criterion_text="Обычный критерий",
+            validation_status=CriterionEntry.ValidationStatus.VALID,
+            ai_verdict="valid",
+            needs_recheck=False,
+            source_sheet_name="Math",
+            source_workbook="criteria.xlsx",
+        )
+        CriterionEntry.objects.create(
+            class_code="5B",
+            subject_name="History",
+            teacher_name="Mr. History",
+            module_number=1,
+            criterion_text="Invalid без recheck",
+            validation_status=CriterionEntry.ValidationStatus.INVALID,
+            ai_verdict="invalid",
+            needs_recheck=False,
+            source_sheet_name="History",
+            source_workbook="criteria.xlsx",
+        )
+
+    def test_shows_only_invalid_with_recheck(self):
+        response = self.client.get(reverse("pipeline:criteria_failures"))
+        self.assertEqual(response.status_code, 200)
+        page = response.content.decode("utf-8")
+        self.assertIn("Проблемный критерий", page)
+        self.assertNotIn("Обычный критерий", page)
+        self.assertNotIn("Invalid без recheck", page)
+        self.assertIn("Комментарий AI / Что исправить", page)
+        self.assertContains(response, "Счётчик invalid по классам")
+        self.assertContains(response, "Счётчик invalid по учителям")
+
+    def test_export_csv_and_json(self):
+        csv_response = self.client.get(reverse("pipeline:criteria_failures"), {"export": "csv"})
+        self.assertEqual(csv_response.status_code, 200)
+        self.assertEqual(csv_response["Content-Type"], "text/csv; charset=utf-8")
+        self.assertIn("Проблемный критерий", csv_response.content.decode("utf-8"))
+
+        json_response = self.client.get(reverse("pipeline:criteria_failures"), {"export": "json"})
+        self.assertEqual(json_response.status_code, 200)
+        self.assertEqual(json_response["Content-Type"], "application/json")
+        payload = json.loads(json_response.content.decode("utf-8"))
+        self.assertEqual(payload[0]["criterion_text"], "Проблемный критерий")
 
 
 class ParentContactsViewTests(TestCase):

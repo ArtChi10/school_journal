@@ -1,7 +1,9 @@
+import csv
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db.models import Q
+from django.db.models import Count, Q
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
@@ -75,6 +77,131 @@ def criteria_table(request):
             "querystring": preserved_query.urlencode(),
         },
     )
+
+@login_required
+@permission_required_403(
+    "pipeline.view_criterionentry",
+    message="Доступ запрещён: нет прав на просмотр проблемных критериев.",
+)
+def criteria_failures(request):
+    queryset = CriterionEntry.objects.filter(
+        validation_status=CriterionEntry.ValidationStatus.INVALID,
+        needs_recheck=True,
+    ).order_by("class_code", "teacher_name", "subject_name", "module_number", "criterion_text")
+
+    class_code = _parse_non_empty(request.GET.get("class_code"))
+    if class_code:
+        queryset = queryset.filter(class_code=class_code)
+
+    teacher_name = _parse_non_empty(request.GET.get("teacher_name"))
+    if teacher_name:
+        queryset = queryset.filter(teacher_name=teacher_name)
+
+    subject_name = _parse_non_empty(request.GET.get("subject_name"))
+    if subject_name:
+        queryset = queryset.filter(subject_name=subject_name)
+
+    module_number = _parse_non_empty(request.GET.get("module_number"))
+    if module_number:
+        queryset = queryset.filter(module_number=module_number)
+
+    status = _parse_non_empty(request.GET.get("status"))
+    if status:
+        queryset = queryset.filter(ai_verdict=status)
+
+    export_format = _parse_non_empty(request.GET.get("export"))
+    if export_format == "csv":
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = 'attachment; filename="criteria_failures.csv"'
+        writer = csv.writer(response)
+        writer.writerow(
+            [
+                "class_code",
+                "teacher_name",
+                "subject_name",
+                "module_number",
+                "criterion_text",
+                "ai_verdict",
+                "ai_comment_or_fix",
+            ]
+        )
+        for row in queryset:
+            writer.writerow(
+                [
+                    row.class_code,
+                    row.teacher_name,
+                    row.subject_name,
+                    row.module_number,
+                    row.criterion_text,
+                    row.ai_verdict,
+                    f"{row.ai_why} / {row.ai_fix_suggestion}",
+                ]
+            )
+        return response
+
+    if export_format == "json":
+        payload = [
+            {
+                "class_code": row.class_code,
+                "teacher_name": row.teacher_name,
+                "subject_name": row.subject_name,
+                "module_number": row.module_number,
+                "criterion_text": row.criterion_text,
+                "ai_verdict": row.ai_verdict,
+                "ai_comment_or_fix": f"{row.ai_why} / {row.ai_fix_suggestion}",
+            }
+            for row in queryset
+        ]
+        return JsonResponse(payload, safe=False)
+
+    class_counters = (
+        queryset.values("class_code")
+        .annotate(total_invalid=Count("id"))
+        .order_by("-total_invalid", "class_code")
+    )
+    teacher_counters = (
+        queryset.values("teacher_name")
+        .annotate(total_invalid=Count("id"))
+        .order_by("-total_invalid", "teacher_name")
+    )
+
+    paginator = Paginator(queryset, 50)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    preserved_query = request.GET.copy()
+    preserved_query.pop("page", None)
+    preserved_query.pop("export", None)
+    query_without_export = preserved_query.urlencode()
+
+    return render(
+        request,
+        "pipeline/criteria_failures.html",
+        {
+            "page_obj": page_obj,
+            "class_choices": CriterionEntry.objects.values_list("class_code", flat=True).distinct().order_by("class_code"),
+            "teacher_choices": CriterionEntry.objects.values_list("teacher_name", flat=True)
+            .distinct()
+            .order_by("teacher_name"),
+            "subject_choices": CriterionEntry.objects.values_list("subject_name", flat=True)
+            .distinct()
+            .order_by("subject_name"),
+            "module_choices": CriterionEntry.objects.values_list("module_number", flat=True)
+            .distinct()
+            .order_by("module_number"),
+            "status_choices": queryset.values_list("ai_verdict", flat=True).exclude(ai_verdict="").distinct().order_by("ai_verdict"),
+            "filters": {
+                "class_code": class_code or "",
+                "teacher_name": teacher_name or "",
+                "subject_name": subject_name or "",
+                "module_number": module_number or "",
+                "status": status or "",
+            },
+            "class_counters": class_counters,
+            "teacher_counters": teacher_counters,
+            "querystring": query_without_export,
+        },
+    )
+
 
 
 @login_required

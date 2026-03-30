@@ -41,6 +41,7 @@
               {% endif %}
               {% if perms.pipeline.view_criterionentry %}
                 <a class="nav-link {% if '/criteria-table/' in request.path %}active{% endif %}" href="{% url 'pipeline:criteria_table' %}">Таблица критериев</a>
+                             <a class="nav-link {% if '/criteria-failures/' in request.path %}active{% endif %}" href="{% url 'pipeline:criteria_failures' %}">Проблемные критерии</a>
               {% endif %}
                 {% if perms.pipeline.view_validcriteriontemplate %}
                 <a class="nav-link {% if '/valid-criteria/' in request.path %}active{% endif %}" href="{% url 'pipeline:valid_criteria_list' %}">Whitelist критериев</a>
