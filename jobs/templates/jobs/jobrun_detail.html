@@ -4,174 +4,200 @@
 {% block page_heading %}Детали запуска{% endblock %}
 
 {% block breadcrumbs %}
-  <nav class="breadcrumbs">
-    <a href="{% url 'job_run_list' %}">Запуски</a> /
-    <span>{{ job_run.id }}</span>
-  </nav>
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0">
+      <li class="breadcrumb-item"><a href="{% url 'job_run_list' %}">Запуски</a></li>
+      <li class="breadcrumb-item active" aria-current="page">{{ job_run.id }}</li>
+    </ol>
+   </nav>
 {% endblock %}
 
 {% block page_actions %}
-  <a class="btn btn-secondary" href="{% url 'job_run_list' %}{% if back_query %}?{{ back_query }}{% endif %}">← Назад к списку</a>
-  {% if perms.jobs.send_reminders %}
- <form class="inline" method="post" action="{% url 'send_reminders' job_run.id %}">
-      {% csrf_token %}
-      <button class="btn btn-primary" type="submit">Отправить напоминания учителям</button>
-    </form>
-  {% endif %}
-  <a class="btn btn-secondary" href="{% url 'export_run_issues_json' job_run.id %}">Export JSON</a>
-  <a class="btn btn-secondary" href="{% url 'export_run_issues_csv' job_run.id %}">Export CSV</a>
+<a class="btn btn-outline-secondary" href="{% url 'job_run_list' %}{% if back_query %}?{{ back_query }}{% endif %}">← Назад к списку</a>
+   {% if perms.jobs.send_reminders %}
+
+   <form method="post" action="{% url 'send_reminders' job_run.id %}">
+       {% csrf_token %}
+       <button class="btn btn-primary" type="submit">Отправить напоминания учителям</button>
+     </form>
+   {% endif %}
+  <a class="btn btn-outline-secondary" href="{% url 'export_run_issues_json' job_run.id %}">Export JSON</a>
+  <a class="btn btn-outline-secondary" href="{% url 'export_run_issues_csv' job_run.id %}">Export CSV</a>
 {% endblock %}
 
- {% block content %}
-  <div class="grid-2">
-    <div>
-      <section class="card">
-        <h2>Summary</h2>
-        <table class="table">
-          <tbody>
-            <tr><th>ID</th><td>{{ job_run.id }}</td></tr>
-            <tr><th>Job type</th><td>{{ job_run.job_type }}</td></tr>
-            <tr><th>Status</th><td><span class="badge badge-{{ job_status_meta.css }}">{{ job_status_meta.label }}</span></td></tr>
-            <tr><th>Started at</th><td>{{ job_run.started_at|default:"—" }}</td></tr>
-            <tr><th>Finished at</th><td>{{ job_run.finished_at|default:"—" }}</td></tr>
-            <tr><th>Initiated by</th><td>{{ job_run.initiated_by|default:"—" }}</td></tr>
-          </tbody>
-        </table>
-        {% if problem_step %}
-          <div class="card problem-card">
-            <strong>Проблемный шаг:</strong>
-            <a href="#{{ problem_step.anchor }}">{{ problem_step.key }} — {{ problem_step.title }}</a><br>
-            <strong>Причина:</strong> {{ problem_step.error_reason|default:"Причина не указана" }}
+{% block content %}
+  <div class="row g-4">
+    <div class="col-12 col-xl-8">
+      <section class="card mb-4">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Summary</h2>
+          <div class="table-responsive">
+            <table class="table align-middle mb-0">
+              <tbody>
+                <tr><th>ID</th><td>{{ job_run.id }}</td></tr>
+                <tr><th>Job type</th><td>{{ job_run.job_type }}</td></tr>
+                <tr><th>Status</th><td><span class="badge badge-soft badge-{{ job_status_meta.css }}">{{ job_status_meta.label }}</span></td></tr>
+                <tr><th>Started at</th><td>{{ job_run.started_at|default:"—" }}</td></tr>
+                <tr><th>Finished at</th><td>{{ job_run.finished_at|default:"—" }}</td></tr>
+                <tr><th>Initiated by</th><td>{{ job_run.initiated_by|default:"—" }}</td></tr>
+              </tbody>
+            </table>
+           </div>
+          {% if problem_step %}
+            <div class="alert alert-danger mt-3 mb-0">
+              <strong>Проблемный шаг:</strong>
+              <a href="#{{ problem_step.anchor }}" class="alert-link">{{ problem_step.key }} — {{ problem_step.title }}</a><br>
+              <strong>Причина:</strong> {{ problem_step.error_reason|default:"Причина не указана" }}
+            </div>
+          {% endif %}
+        </div>
+      </section>
+
+       {% if step_rows %}
+        <section class="card mb-4">
+          <div class="card-body">
+            <h2 class="h5 mb-3">Pipeline steps</h2>
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Step</th>
+                    <th>Status</th>
+                    <th>Started at</th>
+                    <th>Finished at</th>
+                    <th>Ошибка / причина</th>
+                    <th>Контекст</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for step in step_rows %}
+                    <tr id="{{ step.anchor }}">
+                      <td>{{ step.key }} — {{ step.title }}</td>
+                      <td><span class="badge badge-soft badge-{{ step.status_meta.css }}">{{ step.status_meta.label }}</span></td>
+                      <td>{{ step.started_at|default:"—" }}</td>
+                      <td>{{ step.finished_at|default:"—" }}</td>
+                      <td>{% if step.error_reason %}{{ step.error_reason }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+                      <td>
+                        <details>
+                          <summary>Показать context_json/error details</summary>
+                          <pre class="mt-2">{{ step.context_details }}</pre>
+                        </details>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
           </div>
-        {% endif %}
-      </section>
+         </section>
+       {% endif %}
 
-      {% if step_rows %}
-        <section class="card">
-          <h2>Pipeline steps</h2>
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Step</th>
-                <th>Status</th>
-                <th>Started at</th>
-                <th>Finished at</th>
-                <th>Ошибка / причина</th>
-                <th>Контекст</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for step in step_rows %}
-                <tr id="{{ step.anchor }}">
-                  <td>{{ step.key }} — {{ step.title }}</td>
-                  <td><span class="badge badge-{{ step.status_meta.css }}">{{ step.status_meta.label }}</span></td>
-                  <td>{{ step.started_at|default:"—" }}</td>
-                  <td>{{ step.finished_at|default:"—" }}</td>
-                  <td>{% if step.error_reason %}{{ step.error_reason }}{% else %}<span class="muted">—</span>{% endif %}</td>
-                  <td>
-                    <details>
-                      <summary>Показать context_json/error details</summary>
-                      <pre>{{ step.context_details }}</pre>
-                    </details>
-                  </td>
+      <section class="card mb-4">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Timeline logs</h2>
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Level</th>
+                  <th>Message</th>
+                  <th>Context</th>
                 </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </section>
-      {% endif %}
+              </thead>
+              <tbody>
+                {% for log in logs %}
+                  <tr>
+                    <td>{{ log.ts }}</td>
+                    <td>{{ log.level }}</td>
+                    <td>{{ log.message }}</td>
+                    <td>
+                      {% if log.context_json %}
+                        <details>
+                          <summary>Показать context_json</summary>
+                          <pre class="mt-2">{{ log.context_json }}</pre>
+                        </details>
+                      {% else %}
+                        <span class="text-secondary">—</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="4" class="table-empty">Логи отсутствуют.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+       </section>
+     </div>
 
-      <section class="card">
-        <h2>Timeline logs</h2>
-        <table class="table">
-          <thead>
-<tr>
-     <th>Timestamp</th>
-              <th>Level</th>
-              <th>Message</th>
-              <th>Context</th>
-            </tr>
-</thead>
-          <tbody>
-            {% for log in logs %}
-              <tr>
-                <td>{{ log.ts }}</td>
-                <td>{{ log.level }}</td>
-                <td>{{ log.message }}</td>
-                <td>
-                  {% if log.context_json %}
-                    <details>
-                      <summary>Показать context_json</summary>
-                      <pre>{{ log.context_json }}</pre>
-                    </details>
-                  {% else %}
-                    <span class="muted">—</span>
-                  {% endif %}
-                </td>
-              </tr>
-            {% empty %}
-              <tr><td colspan="4" class="table-empty">Логи отсутствуют.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </section>
-    </div>
+    <div class="col-12 col-xl-4">
+       {% if result_summary %}
+        <section class="card mb-4">
+          <div class="card-body">
+            <h2 class="h5 mb-3">Result summary</h2>
+            <div class="table-responsive">
+              <table class="table align-middle mb-0">
+                <tbody>
+                  {% for key, value in result_summary.items %}
+                    <tr><th>{{ key }}</th><td>{{ value }}</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+         </section>
+       {% endif %}
 
-      <div>
-      {% if result_summary %}
-        <section class="card">
-          <h2>Result summary</h2>
-          <table class="table">
-            <tbody>
-              {% for key, value in result_summary.items %}
-                <tr><th>{{ key }}</th><td>{{ value }}</td></tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </section>
-      {% endif %}
- {% if artifacts_payload %}
-        <section class="card">
-          <h2>Artifacts</h2>
-          <pre>{{ artifacts_payload }}</pre>
-        </section>
-      {% endif %}
+      {% if artifacts_payload %}
+        <section class="card mb-4">
+          <div class="card-body">
+            <h2 class="h5 mb-3">Artifacts</h2>
+            <pre>{{ artifacts_payload }}</pre>
+          </div>
+         </section>
+       {% endif %}
 
-
-       {% if errors_payload %}
-        <section class="card">
-          <h2>Errors</h2>
-          <pre>{{ errors_payload }}</pre>
-        </section>
-      {% endif %}
-
-      <section class="card">
-        <h2>Подтверждения учителей</h2>
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Когда</th>
-              <th>Учитель</th>
-              <th>Chat ID</th>
-              <th>Статус</th>
-              <th>Сообщение</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for confirmation in confirmations %}
-              <tr>
-                <td>{{ confirmation.confirmed_at }}</td>
-                <td>{{ confirmation.teacher_name }}</td>
-                <td>{{ confirmation.chat_id }}</td>
-                <td>{{ confirmation.status }}</td>
-                <td>{{ confirmation.message_text }}</td>
-              </tr>
-            {% empty %}
-              <tr><td colspan="5" class="table-empty">Подтверждений пока нет.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </section>
-    </div>
-  </div>
+      {% if errors_payload %}
+        <section class="card mb-4">
+          <div class="card-body">
+            <h2 class="h5 mb-3">Errors</h2>
+            <pre>{{ errors_payload }}</pre>
+          </div>
+         </section>
+       {% endif %}
+      <section class="card mb-4">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Подтверждения учителей</h2>
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Когда</th>
+                  <th>Учитель</th>
+                  <th>Chat ID</th>
+                  <th>Статус</th>
+                  <th>Сообщение</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for confirmation in confirmations %}
+                  <tr>
+                    <td>{{ confirmation.confirmed_at }}</td>
+                    <td>{{ confirmation.teacher_name }}</td>
+                    <td>{{ confirmation.chat_id }}</td>
+                    <td>{{ confirmation.status }}</td>
+                    <td>{{ confirmation.message_text }}</td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="5" class="table-empty">Подтверждений пока нет.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+       </section>
+     </div>
+   </div>
 {% endblock %}

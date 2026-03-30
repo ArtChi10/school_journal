@@ -1,60 +1,119 @@
-<!doctype html>
-<html lang="ru">
-<head><meta charset="utf-8"><title>Контакты родителей</title></head>
-<body>
-  <h1>Контакты родителей</h1>
-  <p><a href="{% url 'pipeline:parent_contact_create' %}">Добавить контакт</a></p>
+{% extends "base.html" %}
+{% block page_title %}Контакты родителей{% endblock %}
+{% block page_heading %}Контакты родителей{% endblock %}
 
-  {% if messages %}
-    <ul>
-      {% for message in messages %}<li>{{ message }}</li>{% endfor %}
-    </ul>
-  {% endif %}
+{% block page_actions %}
+  <a href="{% url 'pipeline:parent_contact_create' %}" class="btn btn-primary">Добавить контакт</a>
+{% endblock %}
+{% block content %}
+  <section class="card mb-4">
+    <div class="card-body">
+      <form method="get" class="row g-3 align-items-end">
+        <div class="col-12 col-md-4">
+          <label class="form-label" for="id_parallel">Параллель</label>
+          <input id="id_parallel" type="text" name="parallel" value="{{ filters.parallel }}" class="form-control" placeholder="Например, 5">
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label" for="id_student">Ученик</label>
+          <input id="id_student" type="text" name="student" value="{{ filters.student }}" class="form-control" placeholder="Имя ученика">
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label" for="id_email">Email</label>
+          <input id="id_email" type="text" name="email" value="{{ filters.email }}" class="form-control" placeholder="Поиск по email">
+        </div>
+        <div class="col-12 d-flex flex-wrap gap-2">
+          <button type="submit" class="btn btn-primary">Применить фильтр</button>
+          <a href="{% url 'pipeline:parent_contacts_list' %}" class="btn btn-outline-secondary">Сбросить</a>
+        </div>
+      </form>
+    </div>
+  </section>
+ <section class="card mb-4">
+    <div class="card-body">
+      <h2 class="h5 mb-3">Импорт контактов</h2>
+      <form method="post" enctype="multipart/form-data" action="{% url 'pipeline:parent_contacts_import' %}" class="row g-3 align-items-end">
+        {% csrf_token %}
+        {% for field in import_form %}
+          <div class="col-12 col-md-7 col-lg-6">
+            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% for error in field.errors %}
+              <div class="text-danger small mt-1">{{ error }}</div>
+            {% endfor %}
+          </div>
+        {% endfor %}
+        <div class="col-12 col-md-auto">
+          <button type="submit" class="btn btn-outline-primary">Импортировать файл</button>
+        </div>
+      </form>
+    </div>
+  </section>
 
-  <form method="get">
-    <label>Параллель: <input type="text" name="parallel" value="{{ filters.parallel }}"></label>
-    <label>Ученик: <input type="text" name="student" value="{{ filters.student }}"></label>
-    <label>Email: <input type="text" name="email" value="{{ filters.email }}"></label>
-    <button type="submit">Фильтр</button>
-  </form>
-
-  <form method="post" enctype="multipart/form-data" action="{% url 'pipeline:parent_contacts_import' %}">
-    {% csrf_token %}
-    {{ import_form.as_p }}
-    <button type="submit">Импортировать файл</button>
-  </form>
-
-  <table border="1" cellpadding="6" cellspacing="0">
-    <thead>
-      <tr>
-        <th>ID</th><th>Параллель</th><th>Класс</th><th>Ученик</th><th>Email 1</th><th>Email 2</th><th>Активен</th><th>Обновлён</th><th>Действия</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for item in page_obj %}
-      <tr>
-        <td>{{ item.id }}</td>
-        <td>{{ item.parallel }}</td>
-        <td>{{ item.class_code }}</td>
-        <td>{{ item.student_name }}</td>
-        <td>{{ item.parent_email_1 }}</td>
-        <td>{{ item.parent_email_2 }}</td>
-        <td>{{ item.is_active }}</td>
-        <td>{{ item.updated_at }}</td>
-        <td>
-          <a href="{% url 'pipeline:parent_contact_edit' item.id %}">Редактировать</a>
-          {% if item.is_active %}
-          <form method="post" action="{% url 'pipeline:parent_contact_disable' item.id %}" style="display:inline;">
-            {% csrf_token %}
-            <button type="submit">Отключить</button>
-          </form>
+  <section class="card">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Параллель</th>
+              <th>Класс</th>
+              <th>Ученик</th>
+              <th>Email 1</th>
+              <th>Email 2</th>
+              <th>Активен</th>
+              <th>Обновлён</th>
+              <th>Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in page_obj %}
+              <tr>
+                <td>{{ item.id }}</td>
+                <td>{{ item.parallel }}</td>
+                <td>{{ item.class_code }}</td>
+                <td>{{ item.student_name }}</td>
+                <td>{{ item.parent_email_1 }}</td>
+                <td>{{ item.parent_email_2 }}</td>
+                <td>
+                  {% if item.is_active %}
+                    <span class="badge badge-soft badge-success">Активен</span>
+                  {% else %}
+                    <span class="badge badge-soft badge-failed">Отключён</span>
+                  {% endif %}
+                </td>
+                <td>{{ item.updated_at }}</td>
+                <td>
+                  <div class="d-flex flex-wrap gap-2">
+                    <a href="{% url 'pipeline:parent_contact_edit' item.id %}" class="btn btn-outline-secondary btn-sm">Редактировать</a>
+                    {% if item.is_active %}
+                      <form method="post" action="{% url 'pipeline:parent_contact_disable' item.id %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline-danger btn-sm">Отключить</button>
+                      </form>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="9" class="table-empty">Контактов пока нет.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% if page_obj.paginator.num_pages > 1 %}
+      <div class="card-footer bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="text-secondary small">Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</div>
+        <div class="d-flex gap-2">
+          {% if page_obj.has_previous %}
+            <a class="btn btn-outline-secondary btn-sm" href="?page={{ page_obj.previous_page_number }}">← Пред.</a>
           {% endif %}
-        </td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="9">Контактов пока нет.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</body>
-</html>
+          {% if page_obj.has_next %}
+            <a class="btn btn-outline-secondary btn-sm" href="?page={{ page_obj.next_page_number }}">След. →</a>
+          {% endif %}
+             </div>
+      </div>
+    {% endif %}
+  </section>
+{% endblock %}

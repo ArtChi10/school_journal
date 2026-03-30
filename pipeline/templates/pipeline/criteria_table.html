@@ -1,109 +1,122 @@
 {% extends "base.html" %}
 {% block page_title %}Таблица критериев{% endblock %}
 {% block page_heading %}Таблица критериев{% endblock %}
+
 {% block breadcrumbs %}
-  <nav class="breadcrumbs">
-    <a href="{% url 'journal_links:list_links' %}">Классы и таблицы</a> /
-    <span>Таблица критериев</span>
+ <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0">
+      <li class="breadcrumb-item"><a href="{% url 'journal_links:list_links' %}">Классы и таблицы</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Таблица критериев</li>
+    </ol>
   </nav>
 {% endblock %}
+
 {% block page_actions %}
   {% if perms.jobs.run_full_pipeline %}
-    <form class="inline" method="post" action="{% url 'run_full_pipeline' %}">
+ <form method="post" action="{% url 'run_full_pipeline' %}">
       {% csrf_token %}
       <button class="btn btn-primary" type="submit">Запустить полный пайплайн</button>
     </form>
   {% endif %}
 {% endblock %}
 {% block content %}
-  <div class="card">
-    <form method="get" class="filters">
-      <label>
-        Класс
-        <select name="class_code">
-          <option value="">Все</option>
-          {% for class_value in class_choices %}
-            <option value="{{ class_value }}" {% if filters.class_code == class_value %}selected{% endif %}>{{ class_value }}</option>
-          {% endfor %}
-        </select>
-      </label>
-        <label>
-        Учитель
-        <select name="teacher_name">
-          <option value="">Все</option>
-          {% for teacher_value in teacher_choices %}
-            <option value="{{ teacher_value }}" {% if filters.teacher_name == teacher_value %}selected{% endif %}>{{ teacher_value }}</option>
-          {% endfor %}
-        </select>
-      </label>
-         <label>
-        Предмет
-        <select name="subject_name">
-          <option value="">Все</option>
-          {% for subject_value in subject_choices %}
-            <option value="{{ subject_value }}" {% if filters.subject_name == subject_value %}selected{% endif %}>{{ subject_value }}</option>
-          {% endfor %}
-        </select>
-      </label>
-
-      <label>
-        Модуль
-        <select name="module_number">
-          <option value="">Все</option>
-          {% for module_value in module_choices %}
-            <option value="{{ module_value }}" {% if filters.module_number == module_value|stringformat:"s" %}selected{% endif %}>{{ module_value }}</option>
-          {% endfor %}
-        </select>
-      </label>
-
-      <div class="inline-actions">
-        <button class="btn btn-secondary" type="submit">Применить фильтры</button>
-        <a class="btn btn-secondary" href="{% url 'pipeline:criteria_table' %}">Сбросить</a>
-      </div>
-    </form>
-
-    <table class="table">
-      <thead>
-        <tr>
-          <th>Класс</th>
-          <th>Учитель</th>
-          <th>Предмет</th>
-          <th>Модуль</th>
-          <th>Исходный критерий</th>
-          <th>AI-версия</th>
-          <th>Статус AI</th>
-        </tr>
-           </thead>
-      <tbody>
-        {% for row in page_obj.object_list %}
-          <tr>
-            <td>{{ row.class_code }}</td>
-            <td>{{ row.teacher_name }}</td>
-            <td>{{ row.subject_name }}</td>
-            <td>{{ row.module_number }}</td>
-            <td>{{ row.criterion_text }}</td>
-            <td>{{ row.criterion_text_ai|default:"" }}</td>
-            <td>
-              {% if row.criterion_text_ai %}
-                <span class="badge badge-success">ok</span>
-              {% else %}
-                <span class="badge badge-failed">failed</span>
-              {% endif %}
-            </td>
-          </tr>
-        {% empty %}
-          <tr><td class="table-empty" colspan="7">Нет данных.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-       <div class="pager inline-actions">
-      {% if page_obj.has_previous %}
-        <a class="btn btn-secondary" href="?page={{ page_obj.previous_page_number }}{% if querystring %}&{{ querystring }}{% endif %}">← Пред.</a>
-      {% endif %}
-      <span>Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
-      {% if page_obj.has_next %}
-        <a class="btn btn-secondary" href="?page={{ page_obj.next_page_number }}{% if querystring %}&{{ querystring }}{% endif %}">След. →</a>
-      {% endif %}
+  <section class="card mb-4">
+    <div class="card-body">
+      <form method="get" class="row g-3 align-items-end">
+        <div class="col-12 col-md-6 col-xl-3">
+          <label class="form-label" for="id_class_code">Класс</label>
+          <select id="id_class_code" name="class_code" class="form-select">
+            <option value="">Все</option>
+            {% for class_value in class_choices %}
+              <option value="{{ class_value }}" {% if filters.class_code == class_value %}selected{% endif %}>{{ class_value }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+          <label class="form-label" for="id_teacher_name">Учитель</label>
+          <select id="id_teacher_name" name="teacher_name" class="form-select">
+            <option value="">Все</option>
+            {% for teacher_value in teacher_choices %}
+              <option value="{{ teacher_value }}" {% if filters.teacher_name == teacher_value %}selected{% endif %}>{{ teacher_value }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+          <label class="form-label" for="id_subject_name">Предмет</label>
+          <select id="id_subject_name" name="subject_name" class="form-select">
+            <option value="">Все</option>
+            {% for subject_value in subject_choices %}
+              <option value="{{ subject_value }}" {% if filters.subject_name == subject_value %}selected{% endif %}>{{ subject_value }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+          <label class="form-label" for="id_module_number">Модуль</label>
+          <select id="id_module_number" name="module_number" class="form-select">
+            <option value="">Все</option>
+            {% for module_value in module_choices %}
+              <option value="{{ module_value }}" {% if filters.module_number == module_value|stringformat:"s" %}selected{% endif %}>{{ module_value }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 d-flex flex-wrap gap-2">
+          <button class="btn btn-primary" type="submit">Применить фильтры</button>
+          <a class="btn btn-outline-secondary" href="{% url 'pipeline:criteria_table' %}">Сбросить</a>
+        </div>
+      </form>
     </div>
-  </div>
+  </section>
+<section class="card">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Класс</th>
+              <th>Учитель</th>
+              <th>Предмет</th>
+              <th>Модуль</th>
+              <th>Исходный критерий</th>
+              <th>AI-версия</th>
+              <th>Статус AI</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in page_obj.object_list %}
+              <tr>
+                <td>{{ row.class_code }}</td>
+                <td>{{ row.teacher_name }}</td>
+                <td>{{ row.subject_name }}</td>
+                <td>{{ row.module_number }}</td>
+                <td>{{ row.criterion_text }}</td>
+                <td>{{ row.criterion_text_ai|default:"" }}</td>
+                <td>
+                  {% if row.criterion_text_ai %}
+                    <span class="badge badge-soft badge-success">ok</span>
+                  {% else %}
+                    <span class="badge badge-soft badge-failed">failed</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% empty %}
+              <tr><td class="table-empty" colspan="7">Нет данных.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+         </div>
+    {% if page_obj.paginator.num_pages > 1 %}
+      <div class="card-footer bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="text-secondary small">Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</div>
+        <div class="d-flex gap-2">
+          {% if page_obj.has_previous %}
+            <a class="btn btn-outline-secondary btn-sm" href="?page={{ page_obj.previous_page_number }}{% if querystring %}&{{ querystring }}{% endif %}">← Пред.</a>
+          {% endif %}
+          {% if page_obj.has_next %}
+            <a class="btn btn-outline-secondary btn-sm" href="?page={{ page_obj.next_page_number }}{% if querystring %}&{{ querystring }}{% endif %}">След. →</a>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+  </section>
 {% endblock %}

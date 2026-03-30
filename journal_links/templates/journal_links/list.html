@@ -9,52 +9,64 @@
 {% endblock %}
 
 {% block content %}
-  <div class="card">
-    <table class="table">
-      <thead>
-        <tr>
-        <th>ID</th>
-          <th>Класс</th>
-          <th>Предмет</th>
-          <th>Учитель</th>
-          <th>Google Sheet</th>
-          <th>Активна</th>
-          <th>Обновлена</th>
-          <th>Действия</th>
-        </tr>
-        </thead>
-      <tbody>
-        {% for link in links %}
-          <tr>
-            <td>{{ link.id }}</td>
-            <td>{{ link.class_code }}</td>
-            <td>{{ link.subject_name }}</td>
-            <td>{{ link.teacher_name }}</td>
-            <td><a href="{{ link.google_sheet_url }}" target="_blank" rel="noopener">Открыть</a></td>
-            <td>{{ link.is_active }}</td>
-            <td>{{ link.updated_at }}</td>
-            <td class="inline-actions">
-              {% if perms.journal_links.change_classsheetlink %}
-                <a class="btn btn-secondary" href="{% url 'journal_links:edit_link' link.id %}">Редактировать</a>
-              {% endif %}
-              {% if link.is_active and perms.jobs.run_validation %}
-                <form class="inline" action="{% url 'journal_links:run_link_validation' link.id %}" method="post">
-                  {% csrf_token %}
-                  <button class="btn btn-primary" type="submit">Проверить заполненность</button>
-                </form>
-              {% endif %}
-              {% if link.is_active and perms.journal_links.change_classsheetlink %}
-                <form class="inline" action="{% url 'journal_links:disable_link' link.id %}" method="post">
-                  {% csrf_token %}
-                  <button class="btn btn-danger" type="submit">Отключить</button>
-                </form>
-              {% endif %}
-            </td>
-          </tr>
-        {% empty %}
-          <tr><td class="table-empty" colspan="8">Ссылок пока нет.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+<section class="card">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Класс</th>
+              <th>Предмет</th>
+              <th>Учитель</th>
+              <th>Google Sheet</th>
+              <th>Активна</th>
+              <th>Обновлена</th>
+              <th>Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for link in links %}
+              <tr>
+                <td>{{ link.id }}</td>
+                <td>{{ link.class_code }}</td>
+                <td>{{ link.subject_name }}</td>
+                <td>{{ link.teacher_name }}</td>
+                <td><a href="{{ link.google_sheet_url }}" target="_blank" rel="noopener" class="link-primary">Открыть</a></td>
+                <td>
+                  {% if link.is_active %}
+                    <span class="badge badge-soft text-bg-success">Да</span>
+                  {% else %}
+                    <span class="badge badge-soft text-bg-secondary">Нет</span>
+                  {% endif %}
+                </td>
+                <td>{{ link.updated_at }}</td>
+                <td>
+                  <div class="d-flex flex-wrap gap-2">
+                    {% if perms.journal_links.change_classsheetlink %}
+                      <a class="btn btn-outline-secondary btn-sm" href="{% url 'journal_links:edit_link' link.id %}">Редактировать</a>
+                    {% endif %}
+                    {% if link.is_active and perms.jobs.run_validation %}
+                      <form method="post" action="{% url 'journal_links:run_link_validation' link.id %}">
+                        {% csrf_token %}
+                        <button class="btn btn-primary btn-sm" type="submit">Проверить заполненность</button>
+                      </form>
+                    {% endif %}
+                    {% if link.is_active and perms.journal_links.change_classsheetlink %}
+                      <form method="post" action="{% url 'journal_links:disable_link' link.id %}">
+                        {% csrf_token %}
+                        <button class="btn btn-outline-danger btn-sm" type="submit">Отключить</button>
+                      </form>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+            {% empty %}
+              <tr><td class="table-empty" colspan="8">Ссылок пока нет.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
 {% endblock %}

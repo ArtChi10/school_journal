@@ -1,100 +1,100 @@
-
 {% extends "base.html" %}
 
 {% block page_title %}Запуски{% endblock %}
 {% block page_heading %}Запуски{% endblock %}
 
 {% block page_actions %}
-   {% if perms.jobs.run_full_pipeline %}
+  {% if perms.jobs.run_full_pipeline %}
+    <form method="post" action="{% url 'run_full_pipeline' %}">
+       {% csrf_token %}
+       <button class="btn btn-primary" type="submit">Запустить полный пайплайн</button>
+     </form>
+  {% endif %}
+ {% endblock %}
 
-    <form class="inline" method="post" action="{% url 'run_full_pipeline' %}">
-      {% csrf_token %}
-      <button class="btn btn-primary" type="submit">Запустить полный пайплайн</button>
-    </form>
-   {% endif %}
-{% endblock %}
+ {% block content %}
+  <section class="card mb-4">
+    <div class="card-body">
+      <form method="get" class="row g-3 align-items-end">
+        <div class="col-12 col-md-6 col-xl-3">
+          <label class="form-label" for="id_status">Статус</label>
+          <select id="id_status" name="status" class="form-select">
+            <option value="">Все</option>
+            {% for value, label in status_choices %}
+              <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+          <label class="form-label" for="id_job_type">Тип задачи</label>
+          <select id="id_job_type" name="job_type" class="form-select">
+            <option value="">Все</option>
+            {% for jt in job_type_choices %}
+              <option value="{{ jt }}" {% if filters.job_type == jt %}selected{% endif %}>{{ jt }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+          <label class="form-label" for="id_started_from">Начало с</label>
+          <input id="id_started_from" type="date" name="started_from" value="{{ filters.started_from }}" class="form-control">
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+          <label class="form-label" for="id_started_to">Начало до</label>
+          <input id="id_started_to" type="date" name="started_to" value="{{ filters.started_to }}" class="form-control">
+        </div>
+        <div class="col-12 d-flex flex-wrap gap-2">
+          <button class="btn btn-primary" type="submit">Применить</button>
+          <a class="btn btn-outline-secondary" href="{% url 'job_run_list' %}">Сбросить</a>
+        </div>
+      </form>
+    </div>
+  </section>
+  <section class="card">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Тип задачи</th>
+              <th>Статус</th>
+              <th>Начало</th>
+              <th>Окончание</th>
+              <th>Детали</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for run in page_obj %}
+              <tr>
+                <td>{{ run.id }}</td>
+                <td>{{ run.job_type }}</td>
+                <td><span class="badge badge-soft badge-{{ run.status_meta.css }}">{{ run.status_meta.label }}</span></td>
+                <td>{{ run.started_at|default:"—" }}</td>
+                <td>{{ run.finished_at|default:"—" }}</td>
+                <td>
+                  <a class="btn btn-outline-secondary btn-sm" href="{% url 'job_run_detail' run.id %}{% if querystring %}?{{ querystring }}{% endif %}">Открыть</a>
+                </td>
+              </tr>
+            {% empty %}
+              <tr><td class="table-empty" colspan="6">No runs found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+       </div>
+    </div>
 
-{% block content %}
-  <div class="card">
-    <form method="get" class="filters">
-      <label>
-        Status
-        <select name="status">
-          <option value="">All</option>
-          {% for value, label in status_choices %}
-            <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </label>
-
-      <label>
-        Job type
-        <select name="job_type">
-          <option value="">All</option>
-          {% for jt in job_type_choices %}
-            <option value="{{ jt }}" {% if filters.job_type == jt %}selected{% endif %}>{{ jt }}</option>
-          {% endfor %}
-        </select>
-      </label>
-
-      <label>
-        Started from
-        <input type="date" name="started_from" value="{{ filters.started_from }}">
-      </label>
-
-      <label>
-        Started to
-        <input type="date" name="started_to" value="{{ filters.started_to }}">
-      </label>
-
-     <div class="inline-actions">
-        <button class="btn btn-secondary" type="submit">Apply</button>
-        <a class="btn btn-secondary" href="{% url 'job_run_list' %}">Reset</a>
+     {% if page_obj.paginator.num_pages > 1 %}
+      <div class="card-footer bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="text-secondary small">Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</div>
+        <div class="d-flex gap-2">
+          {% if page_obj.has_previous %}
+            <a class="btn btn-outline-secondary btn-sm" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
+          {% endif %}
+          {% if page_obj.has_next %}
+            <a class="btn btn-outline-secondary btn-sm" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.next_page_number }}">Next</a>
+          {% endif %}
+        </div>
       </div>
-    </form>
-
-    <table class="table">
-      <thead>
-         <tr>
-          <th>ID</th>
-          <th>Job type</th>
-          <th>Status</th>
-          <th>Started at</th>
-          <th>Finished at</th>
-          <th>Details</th>
-         </tr>
-      </thead>
-      <tbody>
-        {% for run in page_obj %}
-          <tr>
-            <td>{{ run.id }}</td>
-            <td>{{ run.job_type }}</td>
-            <td><span class="badge badge-{{ run.status_meta.css }} status-{{ run.status_meta.css }}">{{ run.status_meta.label }}</span></td>
-            <td>{{ run.started_at|default:"—" }}</td>
-            <td>{{ run.finished_at|default:"—" }}</td>
-            <td>
-              <a class="btn btn-secondary" href="{% url 'job_run_detail' run.id %}{% if querystring %}?{{ querystring }}{% endif %}">Open</a>
-            </td>
-          </tr>
-        {% empty %}
-          <tr><td class="table-empty" colspan="6">No runs found.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-
-    {% if page_obj.paginator.num_pages > 1 %}
-      <nav class="pager inline-actions">
-        {% if page_obj.has_previous %}
-          <a class="btn btn-secondary" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
-        {% endif %}
-
-        <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
-
-
-        {% if page_obj.has_next %}
-          <a class="btn btn-secondary" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.next_page_number }}">Next</a>
-        {% endif %}
-      </nav>
-    {% endif %}
-  </div>
-{% endblock %}
+      {% endif %}
+  </section>
+ {% endblock %}
