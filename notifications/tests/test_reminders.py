@@ -5,7 +5,7 @@ from django.test import TestCase
 
 from jobs.models import JobLog, JobRun
 from notifications.models import NotificationEvent, TeacherContact
-from notifications.reminders import send_validation_reminders_for_job
+from notifications.reminders import run_validation_reminders_job, send_validation_reminders_for_job
 from notifications.services import TelegramSendError
 
 
@@ -304,3 +304,45 @@ class SendValidationRemindersCommandTests(TestCase):
 
         with self.assertRaisesMessage(CommandError, "JobRun not found"):
             call_command("send_validation_reminders", "--job-id", "00000000-0000-0000-0000-000000000000")
+
+
+class RunValidationRemindersJobTests(TestCase):
+    @patch("notifications.reminders.send_telegram")
+    def test_creates_separate_reminder_job_with_logs(self, send_telegram_mock):
+        TeacherContact.objects.create(name="Teacher A", chat_id="111", is_active=True)
+        source_job = JobRun.objects.create(
+            job_type="run_validation",
+            result_json={
+                "issues": [
+                    {"teacher_name": "Teacher A", "class_code": "7A", "subject_name": "Math", "message": "Нет оценки"}
+                ]
+            },
+        )
+
+        reminder_job = run_validation_reminders_job(source_job_run=source_job)
+
+        self.assertEqual(reminder_job.job_type, "send_validation_reminders")
+        self.assertEqual(reminder_job.status, JobRun.Status.SUCCESS)
+        self.assertEqual(reminder_job.params_json["source_job_run_id"], str(source_job.id))
+        self.assertEqual(reminder_job.result_json["summary"], {"sent": 1, "skipped": 0, "errors": 0})
+        self.assertTrue(JobLog.objects.filter(job_run=reminder_job, message="Reminder job started").exists())
+        send_telegram_mock.assert_called_once()
+
+    @patch("notifications.reminders.send_telegram")
+    def test_duplicate_protection_kept_across_manual_jobs(self, send_telegram_mock):
+        TeacherContact.objects.create(name="Teacher A", chat_id="111", is_active=True)
+        source_job = JobRun.objects.create(
+            job_type="run_validation",
+            result_json={
+                "issues": [
+                    {"teacher_name": "Teacher A", "class_code": "7A", "subject_name": "Math", "message": "Нет оценки"}
+                ]
+            },
+        )
+
+        first_job = run_validation_reminders_job(source_job_run=source_job)
+        second_job = run_validation_reminders_job(source_job_run=source_job)
+
+        self.assertEqual(first_job.result_json["summary"], {"sent": 1, "skipped": 0, "errors": 0})
+        self.assertEqual(second_job.result_json["summary"], {"sent": 0, "skipped": 1, "errors": 0})
+        send_telegram_mock.assert_called_once()

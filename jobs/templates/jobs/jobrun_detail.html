@@ -18,7 +18,7 @@
 
    <form method="post" action="{% url 'send_reminders' job_run.id %}">
        {% csrf_token %}
-       <button class="btn btn-primary" type="submit">Отправить напоминания учителям</button>
+       <button class="btn btn-primary" type="submit">Отправить уведомления учителям</button>
      </form>
    {% endif %}
   <a class="btn btn-outline-secondary" href="{% url 'export_run_issues_json' job_run.id %}">Export JSON</a>

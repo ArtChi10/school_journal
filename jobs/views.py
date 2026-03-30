@@ -7,7 +7,7 @@ import csv
 import json
 from django.views.decorators.http import require_POST
 from admin_panel.authz import permission_required_403
-from notifications.reminders import send_validation_reminders_for_job
+from notifications.reminders import run_validation_reminders_job
 
 from pipeline.full_pipeline_runner import run_full_pipeline
 
@@ -280,13 +280,17 @@ def run_full_pipeline_view(request):
 @require_POST
 @permission_required_403("jobs.send_reminders", message="Доступ запрещён: нельзя отправлять напоминания.")
 def send_reminders_view(request, run_id):
-    job_run = get_object_or_404(JobRun, id=run_id)
-    result = send_validation_reminders_for_job(job_run)
+    source_job_run = get_object_or_404(JobRun, id=run_id)
+    reminder_job_run = run_validation_reminders_job(
+        source_job_run=source_job_run,
+        initiated_by=request.user if request.user.is_authenticated else None,
+    )
+    result = (reminder_job_run.result_json or {}).get("summary", {})
     messages.success(
         request,
         (
-            "Напоминания отправлены. "
+            "Уведомления учителям отправлены. "
             f"sent={result.get('sent', 0)}, skipped={result.get('skipped', 0)}, errors={result.get('errors', 0)}"
         ),
     )
-    return redirect("job_run_detail", run_id=job_run.id)
+    return redirect("job_run_detail", run_id=reminder_job_run.id)

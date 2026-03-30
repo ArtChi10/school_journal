@@ -45,15 +45,21 @@ class RBACJobViewsTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertIn("нельзя отправлять напоминания", response.content.decode("utf-8"))
 
-    @patch("jobs.views.send_validation_reminders_for_job", return_value={"sent": 1, "skipped": 0, "errors": 0})
+    @patch("jobs.views.run_validation_reminders_job")
     def test_send_reminders_allowed_with_permission(self, mocked_sender):
         self._grant("send_reminders")
         self.client.force_login(self.user)
+        reminder_job = JobRun.objects.create(
+            job_type="send_validation_reminders",
+            result_json={"summary": {"sent": 1, "skipped": 0, "errors": 0}},
+        )
+        mocked_sender.return_value = reminder_job
 
         response = self.client.post(reverse("send_reminders", kwargs={"run_id": self.job.id}))
 
         self.assertEqual(response.status_code, 302)
-        mocked_sender.assert_called_once_with(self.job)
+        self.assertEqual(response.url, reverse("job_run_detail", kwargs={"run_id": reminder_job.id}))
+        mocked_sender.assert_called_once()
 
     def test_job_run_list_forbidden_without_view_permission(self):
         self.client.force_login(self.user)

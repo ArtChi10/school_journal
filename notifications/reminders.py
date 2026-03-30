@@ -2,6 +2,7 @@ from collections import Counter, defaultdict
 import hashlib
 import json
 from django.conf import settings
+from django.db.models import Q
 from django.utils import timezone
 
 from jobs.models import JobLog, JobRun
@@ -211,8 +212,13 @@ def _payload_hash(teacher_issues: list[dict]) -> str:
 
 
 def _was_already_sent(job_run: JobRun, *, teacher_name: str, payload_hash: str) -> bool:
+    source_job_run_id = str((job_run.params_json or {}).get("source_job_run_id") or job_run.id)
+    dedupe_job_run_ids = JobRun.objects.filter(
+        Q(id=source_job_run_id)
+        | Q(job_type="send_validation_reminders", params_json__source_job_run_id=source_job_run_id)
+    ).values_list("id", flat=True)
     return NotificationEvent.objects.filter(
-        job_run=job_run,
+        job_run_id__in=dedupe_job_run_ids,
         teacher_name=teacher_name,
         channel=NotificationEvent.Channel.TELEGRAM,
         payload_hash=payload_hash,
@@ -356,3 +362,56 @@ def send_validation_reminders_for_job(job_run: JobRun) -> dict:
     )
     _send_admin_summary(job_run, admin_summary_payload)
     return summary
+
+
+def run_validation_reminders_job(*, source_job_run: JobRun, initiated_by=None) -> JobRun:
+    issues = (source_job_run.result_json or {}).get("issues", [])
+    if not isinstance(issues, list):
+        issues = []
+
+    reminder_job = JobRun.objects.create(
+        job_type="send_validation_reminders",
+        status=JobRun.Status.RUNNING,
+        started_at=timezone.now(),
+        initiated_by=initiated_by,
+        params_json={
+            "source_job_run_id": str(source_job_run.id),
+        },
+        result_json={
+            "issues": issues,
+        },
+    )
+
+    _log(
+        reminder_job,
+        JobLog.Level.INFO,
+        "Reminder job started",
+        {"source_job_run_id": str(source_job_run.id), "issues_count": len(issues)},
+    )
+
+    try:
+        summary = send_validation_reminders_for_job(reminder_job)
+        reminder_job.result_json = {
+            "issues": issues,
+            "source_job_run_id": str(source_job_run.id),
+            "summary": summary,
+        }
+        reminder_job.status = JobRun.Status.PARTIAL if summary.get("errors", 0) > 0 else JobRun.Status.SUCCESS
+        return reminder_job
+    except Exception as exc:
+        _log(
+            reminder_job,
+            JobLog.Level.ERROR,
+            f"Reminder job failed: {exc}",
+            {"source_job_run_id": str(source_job_run.id)},
+        )
+        reminder_job.status = JobRun.Status.FAILED
+        reminder_job.result_json = {
+            "issues": issues,
+            "source_job_run_id": str(source_job_run.id),
+            "error": str(exc),
+        }
+        return reminder_job
+    finally:
+        reminder_job.finished_at = timezone.now()
+        reminder_job.save(update_fields=["status", "finished_at", "result_json"])
