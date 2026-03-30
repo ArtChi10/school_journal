@@ -44,21 +44,30 @@ def _normalize_text(value: object) -> str:
     text = re.sub(r"\s+", " ", text)
     return text.strip().lower()
 
-
-def _find_criteria_header_row(ws) -> int | None:
+def _get_real_data_bounds(ws) -> tuple[int, int]:
+    max_row = 0
+    max_col = 0
     for row_num in range(1, ws.max_row + 1):
+        for col_num in range(1, ws.max_column + 1):
+            if not _is_empty(ws.cell(row=row_num, column=col_num).value):
+                max_row = max(max_row, row_num)
+                max_col = max(max_col, col_num)
+    return max_row, max_col
+
+def _find_criteria_header_row(ws, max_row: int, max_col: int) -> int | None:
+    for row_num in range(1, max_row + 1):
         anchor_row_text = " | ".join(
             _normalize_text(ws.cell(row=row_num, column=col).value)
-            for col in range(1, ws.max_column + 1)
+            for col in range(1, max_col + 1)
         )
         if _CRITERIA_ANCHOR_RU in anchor_row_text and _CRITERIA_ANCHOR_EN in anchor_row_text:
             return row_num
 
     # Fallback for legacy sheets without explicit RU/EN anchor
-    for row_num in range(1, ws.max_row + 1):
+    for row_num in range(1, max_row + 1):
         row_headers = [
             _normalize_text(ws.cell(row=row_num, column=col).value)
-            for col in range(1, ws.max_column + 1)
+            for col in range(1, max_col + 1)
         ]
         has_name_columns = any(h in ("имя", "name", "first name") for h in row_headers) and any(
             "фам" in h or h in ("surname", "last name") for h in row_headers
@@ -73,11 +82,23 @@ def _find_criteria_header_row(ws) -> int | None:
     return None
 
 
-def _detect_student_name_columns(ws, header_row: int) -> tuple[int, int]:
+def _detect_student_header_row(ws, criteria_row: int, max_row: int, max_col: int) -> int:
+    for row_num in range(criteria_row, max_row + 1):
+        row_headers = [
+            _normalize_text(ws.cell(row=row_num, column=col).value)
+            for col in range(1, max_col + 1)
+        ]
+        has_first = any(h in ("имя", "name", "first name") for h in row_headers)
+        has_last = any("фам" in h or h in ("surname", "last name") for h in row_headers)
+        if has_first and has_last:
+            return row_num
+    return criteria_row
+
+def _detect_student_name_columns(ws, header_row: int, max_col: int) -> tuple[int, int]:
     first_name_col = 1
     last_name_col = 2
 
-    for col in range(1, ws.max_column + 1):
+    for col in range(1, max_col + 1):
         hdr = _normalize_text(ws.cell(row=header_row, column=col).value)
         if any(token in hdr for token in ("имя", "first", "name")):
             first_name_col = col
@@ -96,11 +117,28 @@ def parse_subject_sheet(ws) -> dict:
         "descriptor": str(ws.cell(row=4, column=3).value or "").strip(),
     }
 
-    criteria_row = _find_criteria_header_row(ws)
+    max_row, max_col = _get_real_data_bounds(ws)
+    if max_row == 0 or max_col == 0:
+        return {
+            "metadata": metadata,
+            "criteria_row": None,
+            "student_header_row": None,
+            "student_start_row": None,
+            "first_name_col": 1,
+            "last_name_col": 2,
+            "criteria_cols": [],
+            "test_cols": [],
+            "comment_col": None,
+            "retake_col": None,
+            "students": [],
+        }
+    criteria_row = _find_criteria_header_row(ws, max_row=max_row, max_col=max_col)
     if criteria_row is None:
         return {
             "metadata": metadata,
             "criteria_row": None,
+            "student_header_row": None,
+            "student_start_row": None,
             "first_name_col": 1,
             "last_name_col": 2,
             "criteria_cols": [],
@@ -110,21 +148,25 @@ def parse_subject_sheet(ws) -> dict:
             "students": [],
         }
 
-    first_name_col, last_name_col = _detect_student_name_columns(ws, criteria_row)
+    student_header_row = _detect_student_header_row(ws, criteria_row=criteria_row, max_row=max_row, max_col=max_col)
+    student_start_row = student_header_row + 1
+    first_name_col, last_name_col = _detect_student_name_columns(ws, student_header_row, max_col=max_col)
 
     comment_col = None
     retake_col = None
     test_cols: list[int] = []
     criteria_cols: list[int] = []
 
-    for col in range(1, ws.max_column + 1):
-        hdr = _normalize_text(ws.cell(row=criteria_row, column=col).value)
+    for col in range(1, max_col + 1):
+        criteria_hdr = _normalize_text(ws.cell(row=criteria_row, column=col).value)
+        student_hdr = _normalize_text(ws.cell(row=student_header_row, column=col).value)
+        hdr = criteria_hdr or student_hdr
         if not hdr:
             continue
 
         if col in (first_name_col, last_name_col):
             continue
-        if _CRITERIA_ANCHOR_RU in hdr or _CRITERIA_ANCHOR_EN in hdr:
+        if _CRITERIA_ANCHOR_RU in criteria_hdr or _CRITERIA_ANCHOR_EN in criteria_hdr:
             continue
 
         if any(k in hdr for k in ("коммент", "comment")):
@@ -141,7 +183,7 @@ def parse_subject_sheet(ws) -> dict:
 
     students = []
     started = False
-    for row in range(criteria_row + 1, ws.max_row + 1):
+    for row in range(student_start_row, max_row + 1):
         first = ws.cell(row=row, column=first_name_col).value
         last = ws.cell(row=row, column=last_name_col).value
 
@@ -178,6 +220,8 @@ def parse_subject_sheet(ws) -> dict:
     return {
         "metadata": metadata,
         "criteria_row": criteria_row,
+        "student_header_row": student_header_row,
+        "student_start_row": student_start_row,
         "first_name_col": first_name_col,
         "last_name_col": last_name_col,
         "criteria_cols": criteria_cols,

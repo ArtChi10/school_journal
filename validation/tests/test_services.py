@@ -5,7 +5,7 @@ from pathlib import Path
 from django.test import SimpleTestCase
 from openpyxl import Workbook
 
-from validation.services import WorkbookReadError, parse_subject_sheet, validate_workbook
+from validation.services import WorkbookReadError, parse_subject_sheet, validate_sheet, validate_workbook
 
 ALLOWED_DESCRIPTOR = "Выполняет самостоятельно | Independent"
 
@@ -141,6 +141,8 @@ class ParseSubjectSheetTests(SimpleTestCase):
         ws.cell(row=6, column=5, value="Quiz 1")
         ws.cell(row=6, column=6, value="Comment")
         ws.cell(row=6, column=7, value="Retake")
+        ws.cell(row=7, column=1, value="ИМЯ")
+        ws.cell(row=7, column=2, value="ФАМИЛИЯ")
 
         ws.cell(row=8, column=1, value="Иван")
         ws.cell(row=8, column=2, value="Иванов")
@@ -160,7 +162,71 @@ class ParseSubjectSheetTests(SimpleTestCase):
         self.assertEqual(parsed["test_cols"], [5])
         self.assertEqual(parsed["comment_col"], 6)
         self.assertEqual(parsed["retake_col"], 7)
+        self.assertEqual(parsed["student_header_row"], 7)
+        self.assertEqual(parsed["student_start_row"], 8)
         self.assertEqual(len(parsed["students"]), 1)
         self.assertEqual(parsed["students"][0]["student"], "Иван Иванов")
         self.assertEqual(parsed["students"][0]["criteria_values"]["Критерий 1"], ALLOWED_DESCRIPTOR)
         self.assertEqual(parsed["students"][0]["test_values"]["Quiz 1"], 88)
+
+    def test_detect_criteria_row_dynamic(self):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "History"
+
+        ws.cell(row=9, column=2, value="Критерии оценивания | Assessment criteria")
+        ws.cell(row=9, column=3, value="Критерий 1")
+        ws.cell(row=9, column=4, value="Quiz 1")
+        ws.cell(row=10, column=1, value="ИМЯ")
+        ws.cell(row=10, column=2, value="ФАМИЛИЯ")
+        ws.cell(row=11, column=1, value="Алия")
+        ws.cell(row=11, column=2, value="Садыкова")
+        ws.cell(row=11, column=3, value=ALLOWED_DESCRIPTOR)
+        ws.cell(row=11, column=4, value=81)
+
+        parsed = parse_subject_sheet(ws)
+
+        self.assertEqual(parsed["criteria_row"], 9)
+
+    def test_detect_student_start_dynamic(self):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Science"
+
+        ws.cell(row=4, column=2, value="Критерии оценивания | Assessment criteria")
+        ws.cell(row=4, column=3, value="Критерий 1")
+        ws.cell(row=4, column=4, value="Тест 1")
+        ws.cell(row=6, column=1, value="ИМЯ")
+        ws.cell(row=6, column=2, value="ФАМИЛИЯ")
+        ws.cell(row=7, column=1, value="Петр")
+        ws.cell(row=7, column=2, value="Петров")
+        ws.cell(row=7, column=3, value=ALLOWED_DESCRIPTOR)
+        ws.cell(row=7, column=4, value=81)
+
+        parsed = parse_subject_sheet(ws)
+
+        self.assertEqual(parsed["student_header_row"], 6)
+        self.assertEqual(parsed["student_start_row"], 7)
+        self.assertEqual(parsed["students"][0]["row"], 7)
+
+    def test_real_data_area_trimmed(self):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Math"
+
+        ws.cell(row=3, column=2, value="Критерии оценивания | Assessment criteria")
+        ws.cell(row=3, column=3, value="Критерий 1")
+        ws.cell(row=3, column=4, value="Quiz 1")
+        ws.cell(row=4, column=1, value="ИМЯ")
+        ws.cell(row=4, column=2, value="ФАМИЛИЯ")
+        ws.cell(row=5, column=1, value="Иван")
+        ws.cell(row=5, column=2, value="Иванов")
+        ws.cell(row=5, column=3, value=ALLOWED_DESCRIPTOR)
+        ws.cell(row=5, column=4, value=81)
+        # Emulate formatting-only tails: grow worksheet dimensions without real values
+        ws.cell(row=200, column=30)
+
+        issues = validate_sheet(ws, "Math")
+
+        self.assertFalse(any(i.code == "EMPTY_CRITERION" for i in issues))
+        self.assertFalse(any(i.code == "INVALID_CRITERION_VALUE" for i in issues))
