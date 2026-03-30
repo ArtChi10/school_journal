@@ -1,4 +1,4 @@
-from collections import Counter, defaultdict
+from collections import defaultdict
 import hashlib
 import json
 from django.conf import settings
@@ -7,11 +7,14 @@ from django.utils import timezone
 
 from jobs.models import JobLog, JobRun
 from jobs.services import log_step
+from pipeline.models import CriterionEntry
 
 from .models import NotificationEvent, TeacherContact
 from .services import TelegramSendError, send_telegram
 
-TOP_PROBLEMS_LIMIT = 5
+TOP_VALID_CRITERIA_LIMIT = 5
+TOP_INVALID_CRITERIA_LIMIT = 10
+
 
 
 def _log(job_run: JobRun, level: str, message: str, context: dict | None = None) -> None:
@@ -23,9 +26,9 @@ def _clean_str(value: object) -> str:
     return str(value).strip()
 
 
-def _issue_location(issue: dict) -> str:
-    class_name = _clean_str(issue.get("class_code") or issue.get("class"))
-    subject = _clean_str(issue.get("subject_name") or issue.get("subject") or issue.get("sheet"))
+def _entry_location(entry: dict) -> str:
+    class_name = _clean_str(entry.get("class_code"))
+    subject = _clean_str(entry.get("subject_name"))
 
     if class_name and subject:
         return f"{class_name} / {subject}"
@@ -36,47 +39,116 @@ def _issue_location(issue: dict) -> str:
     return "UNKNOWN"
 
 
-def _issue_problem_text(issue: dict) -> str:
-    message = _clean_str(issue.get("message"))
-    if message:
-        return message
+def _criterion_preview(text: str, max_len: int = 90) -> str:
+    value = _clean_str(text)
+    if len(value) <= max_len:
+        return value
+    return f"{value[: max_len - 1]}…"
 
-    code = _clean_str(issue.get("code"))
-    if code:
-        return code
+def _build_teacher_payload(teacher_name: str) -> dict | None:
+    entries = list(
+        CriterionEntry.objects.filter(teacher_name=teacher_name).order_by(
+               "class_code", "subject_name", "module_number", "criterion_text"
+        )
+    )
+    if not entries:
+        return None
 
-    return "Проверьте заполнение журнала"
+    checked_entries = [
+        entry
+        for entry in entries
+        if entry.validation_status != CriterionEntry.ValidationStatus.PENDING
+        ]
+    if not checked_entries:
+        return None
+
+    valid_entries: list[dict] = []
+    invalid_entries: list[dict] = []
+    status_counts: dict[str, int] = defaultdict(int)
+    for entry in checked_entries:
+        status = _clean_str(entry.validation_status)
+        status_counts[status] += 1
+        base_item = {
+            "class_code": entry.class_code,
+            "subject_name": entry.subject_name,
+            "module_number": entry.module_number,
+            "criterion_text": entry.criterion_text,
+            "status": status,
+        }
+        if status in {
+            CriterionEntry.ValidationStatus.VALID,
+            CriterionEntry.ValidationStatus.OVERRIDE,
+        }:
+            valid_entries.append(base_item)
+        elif status in {
+            CriterionEntry.ValidationStatus.INVALID,
+            CriterionEntry.ValidationStatus.RECHECK,
+        }:
+            invalid_entries.append(
+                {
+                    **base_item,
+                    "ai_fix_suggestion": entry.ai_fix_suggestion,
+                    "ai_why": entry.ai_why,
+                }
+            )
+    if not invalid_entries:
+        return None
+
+    return {
+        "teacher_name": teacher_name,
+        "checked_count": len(checked_entries),
+        "status_counts": dict(status_counts),
+        "valid_entries": valid_entries,
+        "invalid_entries": invalid_entries,
+    }
 
 
-def _build_teacher_message(teacher_name: str, teacher_issues: list[dict]) -> str:
-    locations = sorted({_issue_location(issue) for issue in teacher_issues})
-    problem_counter: Counter[str] = Counter()
-    for issue in teacher_issues:
-        problem_counter[_issue_problem_text(issue)] += 1
-    severity_counter: Counter[str] = Counter(_clean_str(issue.get("severity")) or "unknown" for issue in teacher_issues)
+def _build_teacher_message(payload: dict) -> str:
+    teacher_name = payload["teacher_name"]
+    checked_count = payload["checked_count"]
+    status_counts = payload["status_counts"]
+    valid_entries = payload["valid_entries"]
+    invalid_entries = payload["invalid_entries"]
 
     lines = [
-        "Напоминание по валидации журнала",
+        "Напоминание по критериям журнала",
         f"Преподаватель: {teacher_name}",
-        f"Классы/предметы: {', '.join(locations)}",
         (
-            "Проблем: "
-            f"всего {len(teacher_issues)} "
-            f"(critical: {severity_counter.get('critical', 0)}, "
-            f"warning: {severity_counter.get('warning', 0)}, "
-            f"info: {severity_counter.get('info', 0)})"
+            "Проверено критериев: "
+            f"{checked_count} "
+            f"(valid: {status_counts.get('valid', 0)}, "
+            f"override: {status_counts.get('override', 0)}, "
+            f"invalid: {status_counts.get('invalid', 0)}, "
+            f"recheck: {status_counts.get('recheck', 0)})"
         ),
-        f"Топ-{TOP_PROBLEMS_LIMIT} проблем:",
     ]
-    for problem, count in problem_counter.most_common(TOP_PROBLEMS_LIMIT):
-        lines.append(f"• {problem} (x{count})")
+    if valid_entries:
+        lines.append(f"✅ Хорошие критерии (до {TOP_VALID_CRITERIA_LIMIT}):")
+    for entry in valid_entries[:TOP_VALID_CRITERIA_LIMIT]:
+        lines.append(
+            "• "
+            f"{_entry_location(entry)} · M{entry['module_number']} — "
+            f"{_criterion_preview(entry['criterion_text'])}"
+        )
+    lines.append(f"⚠️ Невалидные критерии и как исправить (до {TOP_INVALID_CRITERIA_LIMIT}):")
+    for entry in invalid_entries[:TOP_INVALID_CRITERIA_LIMIT]:
+        suggestion = _clean_str(entry.get("ai_fix_suggestion")) or _clean_str(entry.get("ai_why"))
+    if not suggestion:
+        suggestion = "Уточните формулировку критерия и запустите проверку повторно."
+    lines.append(
+        "• "
+        f"{_entry_location(entry)} · M{entry['module_number']} — "
+        f"{_criterion_preview(entry['criterion_text'])}"
+    )
+    lines.append(f"  ↳ Подсказка AI: {_criterion_preview(suggestion, max_len=180)}")
 
-    lines.append("Пожалуйста, исправьте и подтвердите.")
+    lines.append("Пожалуйста, исправьте невалидные критерии и подтвердите обновление.")
     return "\n".join(lines)
 
 
+
 def _build_admin_summary_payload(
-    grouped_by_teacher: dict[str, list[dict]],
+    grouped_by_teacher: dict[str, dict],
     *,
     sent: int,
     skipped: int,
@@ -85,23 +157,23 @@ def _build_admin_summary_payload(
     teachers_with_issues: list[dict] = []
 
     for teacher_name in sorted(grouped_by_teacher):
-        teacher_issues = grouped_by_teacher[teacher_name]
-        issue_counter: Counter[tuple[str, str]] = Counter()
-        for issue in teacher_issues:
-            issue_counter[(_issue_location(issue), _issue_problem_text(issue))] += 1
+        payload = grouped_by_teacher[teacher_name]
+        invalid_entries = payload["invalid_entries"]
 
         details = [
             {
-                "class_subject": location,
-                "problem": problem,
-                "count": count,
+                "class_subject": _entry_location(item),
+                "module_number": item["module_number"],
+                "criterion_text": _criterion_preview(item["criterion_text"]),
+                "ai_fix_suggestion": _clean_str(item.get("ai_fix_suggestion")),
             }
-            for (location, problem), count in sorted(issue_counter.items())
+            for item in invalid_entries[:TOP_INVALID_CRITERIA_LIMIT]
         ]
         teachers_with_issues.append(
             {
                 "teacher": teacher_name,
-                "issues_count": len(teacher_issues),
+                "checked_count": payload["checked_count"],
+                "invalid_count": len(invalid_entries),
                 "details": details,
             }
         )
@@ -125,7 +197,7 @@ def _build_admin_summary_text(job_run: JobRun, payload: dict) -> str:
         f"• skipped: {payload['skipped']}",
         f"• errors: {payload['errors']}",
         "",
-        "Кто не заполнил:",
+        "Кто требует исправления критериев:",
     ]
 
     teachers_with_issues = payload.get("teachers_with_issues", [])
@@ -135,14 +207,16 @@ def _build_admin_summary_text(job_run: JobRun, payload: dict) -> str:
 
     for teacher_item in teachers_with_issues:
         teacher = teacher_item["teacher"]
-        issues_count = teacher_item["issues_count"]
-        lines.append(f"• {teacher} (проблем: {issues_count})")
+        lines.append(
+            f"• {teacher} (checked: {teacher_item['checked_count']}, invalid: {teacher_item['invalid_count']})"
+        )
         for detail in teacher_item["details"]:
             lines.append(
                 "  - "
-                f"{detail['class_subject']} — {detail['problem']} "
-                f"(x{detail['count']})"
+                f"{detail['class_subject']} · M{detail['module_number']} — {detail['criterion_text']}"
             )
+            if detail["ai_fix_suggestion"]:
+                lines.append(f"    ↳ AI: {_criterion_preview(detail['ai_fix_suggestion'], max_len=150)}")
 
     return "\n".join(lines)
 
@@ -194,21 +268,9 @@ def _resolve_contact(teacher_name: str) -> tuple[TeacherContact | None, str | No
         return None, "no_chat_id"
     return contact, None
 
-
-def _normalize_issues_for_hash(teacher_issues: list[dict]) -> list[dict]:
-    normalized: list[dict] = []
-    for issue in teacher_issues:
-        normalized.append({key: issue[key] for key in sorted(issue)})
-    normalized.sort(
-        key=lambda issue: json.dumps(issue, ensure_ascii=False, sort_keys=True, default=str),
-    )
-    return normalized
-
-
-def _payload_hash(teacher_issues: list[dict]) -> str:
-    normalized_issues = _normalize_issues_for_hash(teacher_issues)
-    serialized_issues = json.dumps(normalized_issues, ensure_ascii=False, sort_keys=True, default=str)
-    return hashlib.sha256(serialized_issues.encode("utf-8")).hexdigest()
+def _payload_hash(payload: dict) -> str:
+    serialized_payload = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(serialized_payload.encode("utf-8")).hexdigest()
 
 
 def _was_already_sent(job_run: JobRun, *, teacher_name: str, payload_hash: str) -> bool:
@@ -242,25 +304,25 @@ def _record_notification_event(
         payload_hash=payload_hash,
     )
 
-
+def _collect_teacher_payloads() -> dict[str, dict]:
+    teacher_names = (
+        CriterionEntry.objects.exclude(teacher_name="")
+        .values_list("teacher_name", flat=True)
+        .distinct()
+    )
+    grouped_by_teacher: dict[str, dict] = {}
+    for teacher_name in sorted(teacher_names):
+        payload = _build_teacher_payload(teacher_name)
+        if payload is not None:
+            grouped_by_teacher[teacher_name] = payload
+    return grouped_by_teacher
 
 
 def send_validation_reminders_for_job(job_run: JobRun) -> dict:
-    issues = (job_run.result_json or {}).get("issues", [])
-    if not isinstance(issues, list):
-        raise ValueError("JobRun result_json.issues must be a list")
-
-    grouped_by_teacher: dict[str, list[dict]] = defaultdict(list)
-    for issue in issues:
-        if not isinstance(issue, dict):
-            continue
-        teacher_name = _clean_str(issue.get("teacher_name"))
-        if not teacher_name:
-            continue
-        grouped_by_teacher[teacher_name].append(issue)
+    grouped_by_teacher = _collect_teacher_payloads()
 
     if not grouped_by_teacher:
-        _log(job_run, JobLog.Level.INFO, "No teacher-linked issues for reminders")
+        _log(job_run, JobLog.Level.INFO, "No teacher-linked invalid criterion payloads for reminders")
         return {"sent": 0, "skipped": 0, "errors": 0}
 
     sent = 0
@@ -268,11 +330,11 @@ def send_validation_reminders_for_job(job_run: JobRun) -> dict:
     errors = 0
 
     for teacher_name in sorted(grouped_by_teacher):
-        teacher_issues = grouped_by_teacher[teacher_name]
+        teacher_payload = grouped_by_teacher[teacher_name]
         contact, skip_reason = _resolve_contact(teacher_name)
+        event_payload_hash = _payload_hash(teacher_payload)
 
         if skip_reason:
-            event_payload_hash = _payload_hash(teacher_issues)
             _record_notification_event(
                 job_run,
                 teacher_name=teacher_name,
@@ -287,13 +349,12 @@ def send_validation_reminders_for_job(job_run: JobRun) -> dict:
                 {
                     "teacher": teacher_name,
                     "reason": skip_reason,
-                    "issues_count": len(teacher_issues),
+                     "invalid_count": len(teacher_payload["invalid_entries"]),
                 },
             )
             continue
 
-        text = _build_teacher_message(teacher_name, teacher_issues)
-        event_payload_hash = _payload_hash(teacher_issues)
+        text = _build_teacher_message(teacher_payload)
         if _was_already_sent(job_run, teacher_name=teacher_name, payload_hash=event_payload_hash):
             _record_notification_event(
                 job_run,
@@ -309,7 +370,7 @@ def send_validation_reminders_for_job(job_run: JobRun) -> dict:
                 {
                     "teacher": teacher_name,
                     "reason": "skipped_duplicate",
-                    "issues_count": len(teacher_issues),
+                    "invalid_count": len(teacher_payload["invalid_entries"]),
                 },
             )
             continue
@@ -326,11 +387,11 @@ def send_validation_reminders_for_job(job_run: JobRun) -> dict:
             _log(
                 job_run,
                 JobLog.Level.INFO,
-                 f"Reminder sent to {teacher_name}",
+                  f"Reminder sent to {teacher_name}",
                 {
                     "teacher": teacher_name,
                     "chat_id": contact.chat_id,
-                    "issues_count": len(teacher_issues),
+                    "invalid_count": len(teacher_payload["invalid_entries"]),
                 },
             )
         except TelegramSendError as exc:
@@ -348,7 +409,7 @@ def send_validation_reminders_for_job(job_run: JobRun) -> dict:
                 {
                     "teacher": teacher_name,
                     "chat_id": contact.chat_id,
-                    "issues_count": len(teacher_issues),
+                    "invalid_count": len(teacher_payload["invalid_entries"]),
                 },
             )
 
