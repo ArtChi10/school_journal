@@ -30,6 +30,11 @@ class ValidationIssue:
     student: str | None
     field: str | None
     message: str
+    class_code: str | None = None
+    subject_name: str | None = None
+    teacher_name: str | None = None
+    module_number: int | None = None
+    column_type: str | None = None
 
 
 class WorkbookReadError(ValueError):
@@ -261,12 +266,18 @@ def validate_workbook(path: str) -> dict:
 
     issues: list[ValidationIssue] = []
     sheets_skipped = 0
+    sheets_validated = 0
+    students_total = 0
+    issues_by_code: dict[str, int] = {}
+    sheet_events: list[dict[str, str]] = []
 
     for sheet_name in wb.sheetnames:
         ws = wb[sheet_name]
         sheet_type = _classify_sheet_type(sheet_name)
+        sheet_events.append({"event": "sheet_detected", "sheet_name": sheet_name, "sheet_type": sheet_type})
         if sheet_type in {"tutor", "service"}:
             sheets_skipped += 1
+            sheet_events.append({"event": "sheet_skipped", "sheet_name": sheet_name, "sheet_type": sheet_type})
             logger.info(
                 "Skipping sheet '%s' with type '%s' in validation profile",
                 sheet_name,
@@ -278,25 +289,38 @@ def validate_workbook(path: str) -> dict:
             sheet_name,
             sheet_type,
         )
-        issues.extend(validate_sheet(ws, sheet_name))
+        sheets_validated += 1
+        parsed = parse_subject_sheet(ws)
+        students_total += len(parsed.get("students", []))
+        sheet_issues = validate_sheet(ws, sheet_name, parsed=parsed)
+        issues.extend(sheet_issues)
+        sheet_events.append({"event": "sheet_validated", "sheet_name": sheet_name, "sheet_type": sheet_type})
+
+    for issue in issues:
+        issues_by_code[issue.code] = issues_by_code.get(issue.code, 0) + 1
 
     summary = {
         "total": len(issues),
         "critical": sum(1 for i in issues if i.severity == "critical"),
         "warning": sum(1 for i in issues if i.severity == "warning"),
         "info": sum(1 for i in issues if i.severity == "info"),
+        "sheets_total": len(wb.sheetnames),
+        "sheets_validated": sheets_validated,
         "sheets_skipped": sheets_skipped,
+        "students_total": students_total,
+        "issues_by_code": issues_by_code,
     }
 
     return {
         "summary": summary,
         "issues": [asdict(i) for i in issues],
+        "sheet_events": sheet_events,
     }
 
 
-def validate_sheet(ws, sheet_name: str) -> list[ValidationIssue]:
+def validate_sheet(ws, sheet_name: str, parsed: dict | None = None) -> list[ValidationIssue]:
     issues: list[ValidationIssue] = []
-    parsed = parse_subject_sheet(ws)
+    parsed = parsed or parse_subject_sheet(ws)
     metadata = parsed.get("metadata", {})
     for key in REQUIRED_HEADER_KEYS:
         metadata.setdefault(key, "")

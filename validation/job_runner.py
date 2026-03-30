@@ -190,6 +190,11 @@ def run_validation_job(
     tables: list[dict] = []
     tables_success = 0
     tables_failed = 0
+    sheets_total = 0
+    sheets_validated = 0
+    sheets_skipped = 0
+    students_total = 0
+    issues_by_code: dict[str, int] = {}
 
     try:
         for link in links:
@@ -213,7 +218,30 @@ def run_validation_job(
                 result = validate_workbook(str(temp_file))
                 issues = result.get("issues", [])
                 summary = result.get("summary", {})
+                sheet_events = result.get("sheet_events", [])
                 aggregated_issues.extend(issues)
+                sheets_total += int(summary.get("sheets_total", 0))
+                sheets_validated += int(summary.get("sheets_validated", 0))
+                sheets_skipped += int(summary.get("sheets_skipped", 0))
+                students_total += int(summary.get("students_total", 0))
+                for code, count in (summary.get("issues_by_code", {}) or {}).items():
+                    issues_by_code[code] = issues_by_code.get(code, 0) + int(count)
+
+                for event in sheet_events:
+                    event_type = event.get("event")
+                    if event_type not in {"sheet_detected", "sheet_skipped", "sheet_validated"}:
+                        continue
+                    log_step(
+                        job_run=job_run,
+                        level=JobLog.Level.INFO,
+                        message=event_type,
+                        context={
+                            "link_id": link.id,
+                            "class_code": link.class_code,
+                            "sheet_name": event.get("sheet_name"),
+                            "sheet_type": event.get("sheet_type"),
+                        },
+                    )
 
                 tables.append(
                     {
@@ -269,6 +297,11 @@ def run_validation_job(
             "tables_total": len(links),
             "tables_success": tables_success,
             "tables_failed": tables_failed,
+            "sheets_total": sheets_total,
+            "sheets_validated": sheets_validated,
+            "sheets_skipped": sheets_skipped,
+            "students_total": students_total,
+            "issues_by_code": issues_by_code,
         }
 
         if not links or tables_success == 0:

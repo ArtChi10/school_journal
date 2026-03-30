@@ -81,17 +81,43 @@ class ValidateWorkbookTests(SimpleTestCase):
     def test_valid_workbook_returns_unified_json_shape(self):
         result = validate_workbook(str(self.valid_file))
 
-        self.assertEqual(set(result.keys()), {"summary", "issues"})
+        self.assertEqual(set(result.keys()), {"summary", "issues", "sheet_events"})
         self.assertEqual(
             set(result["summary"].keys()),
-            {"total", "critical", "warning", "info", "sheets_skipped"},
+            {
+                "total",
+                "critical",
+                "warning",
+                "info",
+                "sheets_total",
+                "sheets_validated",
+                "sheets_skipped",
+                "students_total",
+                "issues_by_code",
+            },
         )
         self.assertEqual(
             result["summary"],
-            {"total": 0, "critical": 0, "warning": 0, "info": 0, "sheets_skipped": 0},
+            {
+                "total": 0,
+                "critical": 0,
+                "warning": 0,
+                "info": 0,
+                "sheets_total": 1,
+                "sheets_validated": 1,
+                "sheets_skipped": 0,
+                "students_total": 1,
+                "issues_by_code": {},
+            },
         )
         self.assertEqual(result["issues"], [])
-
+        self.assertEqual(
+            result["sheet_events"],
+            [
+                {"event": "sheet_detected", "sheet_name": "Grade5A", "sheet_type": "subject"},
+                {"event": "sheet_validated", "sheet_name": "Grade5A", "sheet_type": "subject"},
+            ],
+        )
         # ручная проверка JSON-формата (сериализация без ошибок)
         payload = json.dumps(result, ensure_ascii=False)
         self.assertIn('"summary"', payload)
@@ -105,6 +131,10 @@ class ValidateWorkbookTests(SimpleTestCase):
         self.assertEqual(result["summary"]["warning"], 3)
         self.assertEqual(result["summary"]["info"], 0)
         self.assertEqual(result["summary"]["sheets_skipped"], 0)
+        self.assertEqual(result["summary"]["sheets_total"], 1)
+        self.assertEqual(result["summary"]["sheets_validated"], 1)
+        self.assertEqual(result["summary"]["students_total"], 1)
+        self.assertGreater(len(result["summary"]["issues_by_code"]), 0)
 
         self.assertEqual(len(result["issues"]), result["summary"]["total"])
 
@@ -157,6 +187,14 @@ class ValidateWorkbookTests(SimpleTestCase):
 
         ws_subject = wb.active
         ws_subject.title = "Math"
+        ws_subject.cell(row=1, column=2, value="Класс | Grade")
+        ws_subject.cell(row=1, column=3, value="5A")
+        ws_subject.cell(row=2, column=2, value="Учитель | Teacher")
+        ws_subject.cell(row=2, column=3, value="Ms Doe")
+        ws_subject.cell(row=3, column=2, value="Модуль | Module")
+        ws_subject.cell(row=3, column=3, value="1")
+        ws_subject.cell(row=4, column=2, value="Дескриптор | Descriptor")
+        ws_subject.cell(row=4, column=3, value="Term descriptor")
         ws_subject.cell(row=5, column=1, value="Имя")
         ws_subject.cell(row=5, column=2, value="Фамилия")
         ws_subject.cell(row=5, column=3, value="Критерий 1")
@@ -179,9 +217,17 @@ class ValidateWorkbookTests(SimpleTestCase):
 
         self.assertEqual(result["summary"]["critical"], 0)
         self.assertEqual(result["summary"]["warning"], 0)
+        self.assertEqual(result["summary"]["sheets_total"], 2)
+        self.assertEqual(result["summary"]["sheets_validated"], 1)
         self.assertEqual(result["summary"]["sheets_skipped"], 1)
+        self.assertEqual(result["summary"]["students_total"], 1)
+        self.assertEqual(result["summary"]["issues_by_code"], {})
         self.assertFalse(any(issue["sheet"] == "Тьютор | Tutor" for issue in result["issues"]))
         self.assertTrue(any("Skipping sheet 'Тьютор | Tutor' with type 'tutor'" in log for log in captured_logs.output))
+        self.assertIn(
+            {"event": "sheet_skipped", "sheet_name": "Тьютор | Tutor", "sheet_type": "tutor"},
+            result["sheet_events"],
+        )
 
     def test_workbook_with_tutor_and_subject_sheets(self):
         workbook_file = Path(self._tmpdir.name) / "tutor_and_subject.xlsx"
@@ -189,6 +235,14 @@ class ValidateWorkbookTests(SimpleTestCase):
 
         ws_subject = wb.active
         ws_subject.title = "Biology"
+        ws_subject.cell(row=1, column=2, value="Класс | Grade")
+        ws_subject.cell(row=1, column=3, value="5A")
+        ws_subject.cell(row=2, column=2, value="Учитель | Teacher")
+        ws_subject.cell(row=2, column=3, value="Ms Doe")
+        ws_subject.cell(row=3, column=2, value="Модуль | Module")
+        ws_subject.cell(row=3, column=3, value="1")
+        ws_subject.cell(row=4, column=2, value="Дескриптор | Descriptor")
+        ws_subject.cell(row=4, column=3, value="Term descriptor")
         ws_subject.cell(row=5, column=1, value="Имя")
         ws_subject.cell(row=5, column=2, value="Фамилия")
         ws_subject.cell(row=5, column=3, value="Критерий 1")
@@ -215,7 +269,11 @@ class ValidateWorkbookTests(SimpleTestCase):
         self.assertEqual(result["summary"]["total"], 0)
         self.assertEqual(result["summary"]["critical"], 0)
         self.assertEqual(result["summary"]["warning"], 0)
+        self.assertEqual(result["summary"]["sheets_total"], 2)
+        self.assertEqual(result["summary"]["sheets_validated"], 1)
         self.assertEqual(result["summary"]["sheets_skipped"], 1)
+        self.assertEqual(result["summary"]["students_total"], 1)
+        self.assertEqual(result["summary"]["issues_by_code"], {})
 class ParseSubjectSheetTests(SimpleTestCase):
     def test_parses_metadata_criteria_students_and_values_dynamically(self):
         wb = Workbook()

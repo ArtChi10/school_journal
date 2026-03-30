@@ -113,6 +113,13 @@ class RunValidationJobTests(TestCase):
         self.assertIn("tables", job_run.result_json)
         self.assertEqual(job_run.result_json["summary"]["tables_total"], 1)
         self.assertEqual(job_run.result_json["summary"]["tables_success"], 1)
+        self.assertEqual(job_run.result_json["summary"]["sheets_total"], 1)
+        self.assertEqual(job_run.result_json["summary"]["sheets_validated"], 1)
+        self.assertEqual(job_run.result_json["summary"]["sheets_skipped"], 0)
+        self.assertEqual(job_run.result_json["summary"]["students_total"], 1)
+        self.assertIsInstance(job_run.result_json["summary"]["issues_by_code"], dict)
+        self.assertTrue(job_run.logs.filter(message="sheet_detected").exists())
+        self.assertTrue(job_run.logs.filter(message="sheet_validated").exists())
         self.assertGreaterEqual(job_run.logs.count(), 2)
 
     def test_command_requires_single_selector(self):
