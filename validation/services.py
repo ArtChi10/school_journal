@@ -31,6 +31,7 @@ class ValidationIssue:
     field: str | None
     message: str
 
+
 class WorkbookReadError(ValueError):
     """Raised when a workbook cannot be read for validation."""
 
@@ -301,66 +302,89 @@ def validate_sheet(ws, sheet_name: str) -> list[ValidationIssue]:
         metadata.setdefault(key, "")
 
     class_meta = str(metadata.get("class", "")).strip()
-    if _is_empty(class_meta):
-        issues.append(
-            ValidationIssue(
-                code="MISSING_CLASS_META",
-                severity="critical",
-                sheet=sheet_name,
-                row=1,
-                student=None,
-                field="meta_class",
-                message="Не заполнено поле «Класс | Grade» (C1). Заполните класс в ячейке C1.",
-            )
-        )
-
     teacher_meta = str(metadata.get("teacher", "")).strip()
-    if _is_empty(teacher_meta):
-        issues.append(
-            ValidationIssue(
-                code="MISSING_TEACHER_META",
-                severity="critical",
-                sheet=sheet_name,
-                row=2,
-                student=None,
-                field="meta_teacher",
-                message="Не заполнено поле «Учитель | Teacher» (C2). Укажите ФИО учителя в ячейке C2.",
-            )
+    module_meta = str(metadata.get("module", "")).strip()
+    module_number = int(float(module_meta)) if _is_numeric(module_meta) else None
+    column_types = parsed.get("column_types", {})
+
+    def make_issue(
+            *,
+            code: str,
+            severity: str,
+            row: int | None,
+            student: str | None,
+            field: str | None,
+            message: str,
+    ) -> ValidationIssue:
+        column_type = None
+        if field and field.startswith("col_"):
+            try:
+                col_number = int(field.replace("col_", "", 1))
+            except ValueError:
+                col_number = None
+            if col_number is not None:
+                column_type = column_types.get(col_number)
+
+        return ValidationIssue(
+            code=code,
+            severity=severity,
+            sheet=sheet_name,
+            row=row,
+            student=student,
+            field=field,
+            message=message,
+            class_code=class_meta or None,
+            subject_name=sheet_name or None,
+            teacher_name=teacher_meta or None,
+            module_number=module_number,
+            column_type=column_type,
         )
 
-    module_meta = str(metadata.get("module", "")).strip()
+    if _is_empty(class_meta):
+        issues.append(make_issue(
+            code="MISSING_CLASS_META",
+            severity="critical",
+            row=1,
+            student=None,
+            field="meta_class",
+            message="Не заполнено поле «Класс | Grade» (C1). Заполните класс в ячейке C1.",
+        ))
+
+    if _is_empty(teacher_meta):
+        issues.append(make_issue(
+            code="MISSING_TEACHER_META",
+            severity="critical",
+            row=2,
+            student=None,
+            field="meta_teacher",
+            message="Не заполнено поле «Учитель | Teacher» (C2). Укажите ФИО учителя в ячейке C2.",
+        ))
+
     if not _is_numeric(module_meta):
-        issues.append(
-            ValidationIssue(
-                code="INVALID_MODULE_META",
-                severity="warning",
-                sheet=sheet_name,
-                row=3,
-                student=None,
-                field="meta_module",
-                message="Поле «Учебный модуль | Module» (C3) должно быть числом. Укажите номер модуля цифрой (например, 1, 2, 3).",
-            )
-        )
+        issues.append(make_issue(
+            code="INVALID_MODULE_META",
+            severity="warning",
+            row=3,
+            student=None,
+            field="meta_module",
+            message="Поле «Учебный модуль | Module» (C3) должно быть числом. Укажите номер модуля цифрой (например, 1, 2, 3).",
+        ))
 
     descriptor_meta = str(metadata.get("descriptor", "")).strip()
     if _is_empty(descriptor_meta):
-        issues.append(
-            ValidationIssue(
-                code="MISSING_DESCRIPTOR_META",
-                severity="critical",
-                sheet=sheet_name,
-                row=4,
-                student=None,
-                field="meta_descriptor",
-                message="Не заполнено поле «Дескриптор | Descriptor» (C4). Заполните описание дескриптора в ячейке C4.",
-            )
-        )
+        issues.append(make_issue(
+            code="MISSING_DESCRIPTOR_META",
+            severity="critical",
+            row=4,
+            student=None,
+            field="meta_descriptor",
+            message="Не заполнено поле «Дескриптор | Descriptor» (C4). Заполните описание дескриптора в ячейке C4.",
+        ))
 
     criteria_cols = parsed["criteria_cols"]
     test_cols = parsed["test_cols"]
     comment_col = parsed["comment_col"]
     retake_col = parsed["retake_col"]
-    column_types = parsed.get("column_types", {})
     for student_info in parsed["students"]:
         row = student_info["row"]
         student_name = student_info["student"]
@@ -368,43 +392,34 @@ def validate_sheet(ws, sheet_name: str) -> list[ValidationIssue]:
         for col in criteria_cols:
             v = ws.cell(row=row, column=col).value
             if _is_empty(v):
-                issues.append(
-                    ValidationIssue(
-                        code="EMPTY_CRITERION",
-                        severity="critical",
-                        sheet=sheet_name,
-                        row=row,
-                        student=student_name,
-                        field=f"col_{col}",
-                        message="Не заполнен критерий оценивания",
-                    )
-                )
+                issues.append(make_issue(
+                    code="EMPTY_CRITERION",
+                    severity="critical",
+                    row=row,
+                    student=student_name,
+                    field=f"col_{col}",
+                    message="Не заполнен критерий оценивания",
+                ))
             else:
                 sv = str(v).strip()
                 if _is_numeric(sv):
-                    issues.append(
-                        ValidationIssue(
-                            code="CRITERION_EXPECTS_LEVEL",
-                            severity="warning",
-                            sheet=sheet_name,
-                            row=row,
-                            student=student_name,
-                            field=f"col_{col}",
-                            message=f"В колонке критерия ожидается уровень, получено число: {sv}",
-                        )
-                    )
+                    issues.append(make_issue(
+                        code="CRITERION_EXPECTS_LEVEL",
+                        severity="warning",
+                        row=row,
+                        student=student_name,
+                        field=f"col_{col}",
+                        message=f"В колонке критерия ожидается уровень, получено число: {sv}",
+                    ))
                 elif sv not in ALLOWED_DESCRIPTOR_VALUES:
-                    issues.append(
-                        ValidationIssue(
-                            code="INVALID_CRITERION_VALUE",
-                            severity="warning",
-                            sheet=sheet_name,
-                            row=row,
-                            student=student_name,
-                            field=f"col_{col}",
-                            message=f"Недопустимое значение критерия: '{sv}'",
-                        )
-                    )
+                    issues.append(make_issue(
+                        code="INVALID_CRITERION_VALUE",
+                        severity="warning",
+                        row=row,
+                        student=student_name,
+                        field=f"col_{col}",
+                        message=f"Недопустимое значение критерия: '{sv}'",
+                    ))
 
         low_score_found = False
         low_score_context: tuple[int, float] | None = None
@@ -415,49 +430,40 @@ def validate_sheet(ws, sheet_name: str) -> list[ValidationIssue]:
             try:
                 score = float(raw)
                 if score < TEST_SCORE_MIN or score > TEST_SCORE_MAX:
-                    issues.append(
-                        ValidationIssue(
-                            code="TEST_SCORE_OUT_OF_RANGE",
-                            severity="warning",
-                            sheet=sheet_name,
-                            row=row,
-                            student=student_name,
-                            field=f"col_{col}",
-                            message=f"Баллы вне диапазона {TEST_SCORE_MIN}-{TEST_SCORE_MAX}: {score}",
-                        )
-                    )
+                    issues.append(make_issue(
+                        code="TEST_SCORE_OUT_OF_RANGE",
+                        severity="warning",
+                        row=row,
+                        student=student_name,
+                        field=f"col_{col}",
+                        message=f"Баллы вне диапазона {TEST_SCORE_MIN}-{TEST_SCORE_MAX}: {score}",
+                    ))
                 if score < LOW_SCORE_THRESHOLD:
                     low_score_found = True
                     if low_score_context is None:
                         low_score_context = (col, score)
             except Exception:
-                issues.append(
-                    ValidationIssue(
-                        code="TEST_SCORE_NOT_NUMERIC",
-                        severity="warning",
-                        sheet=sheet_name,
-                        row=row,
-                        student=student_name,
-                        field=f"col_{col}",
-                        message=f"Тестовый балл не число: {raw}",
-                    )
-                )
+                issues.append(make_issue(
+                    code="TEST_SCORE_NOT_NUMERIC",
+                    severity="warning",
+                    row=row,
+                    student=student_name,
+                    field=f"col_{col}",
+                    message=f"Тестовый балл не число: {raw}",
+                ))
         if retake_col and column_types.get(retake_col) == "retake":
             raw_retake = ws.cell(row=row, column=retake_col).value
             if not _is_empty(raw_retake):
                 normalized_retake = _normalize_text(raw_retake)
                 if normalized_retake not in VALID_RETAKE_VALUES:
-                    issues.append(
-                        ValidationIssue(
-                            code="INVALID_RETAKE_VALUE",
-                            severity="warning",
-                            sheet=sheet_name,
-                            row=row,
-                            student=student_name,
-                            field=f"col_{retake_col}",
-                            message=f"Недопустимое значение пересдачи: {raw_retake}",
-                        )
-                    )
+                    issues.append(make_issue(
+                        code="INVALID_RETAKE_VALUE",
+                        severity="warning",
+                        row=row,
+                        student=student_name,
+                        field=f"col_{retake_col}",
+                        message=f"Недопустимое значение пересдачи: {raw_retake}",
+                    ))
         if low_score_found:
             low_score_message_suffix = ""
             if low_score_context:
@@ -468,37 +474,31 @@ def validate_sheet(ws, sheet_name: str) -> list[ValidationIssue]:
             if COMMENT_REQUIRED_IF_LOW_SCORE and comment_col:
                 c = ws.cell(row=row, column=comment_col).value
                 if _is_empty(c):
-                    issues.append(
-                        ValidationIssue(
-                            code="COMMENT_REQUIRED",
-                            severity="critical",
-                            sheet=sheet_name,
-                            row=row,
-                            student=student_name,
-                            field=f"col_{comment_col}",
-                            message=(
-                                "Нужен комментарий при низком тестовом балле"
-                                f"{low_score_message_suffix}"
-                            ),
-                        )
-                    )
+                    issues.append(make_issue(
+                        code="COMMENT_REQUIRED",
+                        severity="critical",
+                        row=row,
+                        student=student_name,
+                        field=f"col_{comment_col}",
+                        message=(
+                            "Нужен комментарий при низком тестовом балле"
+                            f"{low_score_message_suffix}"
+                        ),
+                    ))
             if RETAKE_REQUIRED_IF_LOW_SCORE and retake_col:
                 r = ws.cell(row=row, column=retake_col).value
                 if _is_empty(r):
-                    issues.append(
-                        ValidationIssue(
-                            code="RETAKE_REQUIRED",
-                            severity="critical",
-                            sheet=sheet_name,
-                            row=row,
-                            student=student_name,
-                            field=f"col_{retake_col}",
-                            message=(
-                                "Нужно указать пересдачу при низком тестовом балле"
-                                f"{low_score_message_suffix}"
-                            ),
-                        )
-                    )
+                    issues.append(make_issue(
+                        code="RETAKE_REQUIRED",
+                        severity="critical",
+                        row=row,
+                        student=student_name,
+                        field=f"col_{retake_col}",
+                        message=(
+                            "Нужно указать пересдачу при низком тестовом балле"
+                            f"{low_score_message_suffix}"
+                        ),
+                    ))
 
 
     return issues

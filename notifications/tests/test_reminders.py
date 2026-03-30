@@ -248,6 +248,29 @@ class SendValidationRemindersTests(TestCase):
         self.assertEqual(len(sent_hashes), 2)
         self.assertNotEqual(sent_hashes[0], sent_hashes[1])
 
+    @patch("notifications.reminders.send_telegram")
+    def test_legacy_issue_payload_without_new_context_fields_still_works(self, send_telegram_mock):
+        legacy_job_run = JobRun.objects.create(
+            job_type="run_validation",
+            result_json={
+                "issues": [
+                    {
+                        "teacher_name": "Teacher Legacy",
+                        "class": "9C",
+                        "subject": "Geometry",
+                        "severity": "warning",
+                        "message": "Legacy payload issue",
+                    }
+                ]
+            },
+        )
+        TeacherContact.objects.create(name="Teacher Legacy", chat_id="9991", is_active=True)
+
+        result = send_validation_reminders_for_job(legacy_job_run)
+
+        self.assertEqual(result, {"sent": 1, "skipped": 0, "errors": 0})
+        send_telegram_mock.assert_called_once()
+        self.assertIn("9C / Geometry", send_telegram_mock.call_args.args[1])
 
 class SendValidationRemindersCommandTests(TestCase):
     @patch("notifications.reminders.send_telegram")

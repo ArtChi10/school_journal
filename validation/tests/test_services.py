@@ -116,9 +116,29 @@ class ValidateWorkbookTests(SimpleTestCase):
             "student",
             "field",
             "message",
+            "class_code",
+            "subject_name",
+            "teacher_name",
+            "module_number",
+            "column_type",
         }
         for issue in result["issues"]:
             self.assertEqual(set(issue.keys()), required_issue_keys)
+
+    def test_issue_payload_contains_subject_teacher_context(self):
+        result = validate_workbook(str(self.problem_file))
+        self.assertGreater(len(result["issues"]), 0)
+
+        issue = result["issues"][0]
+        self.assertIn("class_code", issue)
+        self.assertIn("subject_name", issue)
+        self.assertIn("teacher_name", issue)
+        self.assertIn("module_number", issue)
+        self.assertIn("column_type", issue)
+        self.assertEqual(issue["subject_name"], "Grade5B")
+
+        column_types = {item["column_type"] for item in result["issues"] if item["column_type"] is not None}
+        self.assertTrue(column_types.issubset({"criterion", "test", "comment", "retake"}))
 
     def test_read_errors_raise_predictable_exception(self):
         with self.assertRaises(WorkbookReadError):
