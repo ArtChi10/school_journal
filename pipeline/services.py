@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import json
 from pathlib import Path
 from zipfile import BadZipFile
 
@@ -35,11 +36,18 @@ _CRITERION_EVALUATION_PROMPT = (
     "«знает», «понимает», «умеет хорошо», «старается», «молодец», «способен».\n"
     "7) Нет ли лишней оценочности, эмоциональности или неформального стиля.\n"
     "8) Не относится ли критерий к второстепенным вещам, если он поставлен как один из главных.\n\n"
-    "После проверки дай ответ строго в таком формате:\n"
-    "Вердикт: подходит / не очень подходит / не подходит.\n"
-    "Почему: коротко объясни, какие именно требования соблюдены или нарушены.\n"
-    "Что исправить: предложи, как сделать критерий более точным, измеримым и подходящим для отчета.\n"
-    "Исправленный вариант: дай 1–3 более удачные формулировки критерия.\n\n"
+    "После проверки верни строго JSON-объект БЕЗ markdown и лишнего текста:\n"
+    "{\n"
+    '  "verdict": "valid|partial|invalid",\n'
+    '  "why": "короткое объяснение",\n'
+    '  "fix": "что исправить",\n'
+    '  "variants": ["вариант 1", "вариант 2"]\n'
+    "}\n\n"
+    "Требования к формату:\n"
+    "- JSON строго валиден.\n"
+    "- Поля verdict/why/fix/variants обязательны.\n"
+    "- variants — список из 1-3 непустых строк.\n"
+    "- verdict только из: valid, partial, invalid.\n\n"
     "Если критерий уже хороший, так и скажи и коротко объясни, почему он удачен."
 )
 
@@ -48,6 +56,9 @@ class WorkbookReadError(ValueError):
 
 class CriterionNormalizationError(ValueError):
     """Raised when criterion normalization via AI fails."""
+
+class CriterionAIFormatError(CriterionNormalizationError):
+    """Raised when AI response cannot be parsed into expected structured format."""
 
 
 def _normalize_text(value: object) -> str:
@@ -101,6 +112,98 @@ def _get_openai_client():
     return OpenAI()
 
 
+def _parse_ai_json_payload(payload: str) -> dict:
+    raw = str(payload or "").strip()
+    if not raw:
+        raise CriterionAIFormatError("AI normalization returned an empty response")
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise CriterionAIFormatError("AI returned non-JSON response") from exc
+
+    if not isinstance(parsed, dict):
+        raise CriterionAIFormatError("AI JSON response must be an object")
+
+    verdict = str(parsed.get("verdict", "")).strip().lower()
+    why = str(parsed.get("why", "")).strip()
+    fix = str(parsed.get("fix", "")).strip()
+    variants = parsed.get("variants")
+
+    if verdict not in {"valid", "partial", "invalid"}:
+        raise CriterionAIFormatError("AI verdict must be one of: valid, partial, invalid")
+    if not why:
+        raise CriterionAIFormatError("AI why is required")
+    if not fix:
+        raise CriterionAIFormatError("AI fix is required")
+    if not isinstance(variants, list):
+        raise CriterionAIFormatError("AI variants must be a list")
+
+    cleaned_variants = [str(item).strip() for item in variants if str(item).strip()]
+    if not cleaned_variants:
+        raise CriterionAIFormatError("AI variants must contain at least one non-empty item")
+
+    return {
+        "verdict": verdict,
+        "why": why,
+        "fix": fix,
+        "variants": cleaned_variants[:3],
+    }
+
+
+def _request_ai_criterion_evaluation(
+    source_text: str,
+    *,
+    ai_client,
+    model_name: str,
+) -> str:
+    response = ai_client.responses.create(
+        model=model_name,
+        input=[
+            {"role": "system", "content": _CRITERION_EVALUATION_PROMPT},
+            {"role": "user", "content": source_text},
+        ],
+        temperature=0,
+    )
+    return str(getattr(response, "output_text", "") or "").strip()
+
+
+def evaluate_criterion_text_with_ai(
+    criterion_text: str,
+    *,
+    client=None,
+    model: str | None = None,
+) -> dict:
+    source_text = str(criterion_text or "").strip()
+    if not source_text:
+        return {"verdict": "invalid", "why": "", "fix": "", "variants": []}
+
+    ai_client = client or _get_openai_client()
+    model_name = model or os.getenv("OPENAI_CRITERIA_MODEL", _DEFAULT_NORMALIZATION_MODEL)
+
+    try:
+        raw_response = _request_ai_criterion_evaluation(
+            source_text,
+            ai_client=ai_client,
+            model_name=model_name,
+        )
+        return _parse_ai_json_payload(raw_response)
+    except CriterionAIFormatError:
+        try:
+            raw_response = _request_ai_criterion_evaluation(
+                f"{source_text}\n\nВажно: верни только валидный JSON в заданном формате.",
+                ai_client=ai_client,
+                model_name=model_name,
+            )
+            return _parse_ai_json_payload(raw_response)
+        except CriterionAIFormatError as exc:
+            raise CriterionNormalizationError("AI returned invalid structured format") from exc
+    except Exception as exc:
+        raise CriterionNormalizationError(
+            f"AI normalization failed for criterion '{source_text[:100]}'"
+        ) from exc
+
+
 def normalize_criterion_text_with_ai(
     criterion_text: str,
     *,
@@ -112,31 +215,13 @@ def normalize_criterion_text_with_ai(
     if not source_text:
         return ""
 
-    ai_client = client or _get_openai_client()
-    model_name = model or os.getenv("OPENAI_CRITERIA_MODEL", _DEFAULT_NORMALIZATION_MODEL)
-
-    instructions = _CRITERION_EVALUATION_PROMPT
-
-    try:
-        response = ai_client.responses.create(
-            model=model_name,
-            input=[
-                {"role": "system", "content": instructions},
-                {"role": "user", "content": source_text},
-            ],
-            temperature=0,
-        )
-    except Exception as exc:
-        raise CriterionNormalizationError(
-            f"AI normalization failed for criterion '{source_text[:100]}'"
-        ) from exc
-
-    normalized = str(getattr(response, "output_text", "") or "").strip()
-    if not normalized:
-        raise CriterionNormalizationError("AI normalization returned an empty response")
-
-    return normalized
-
+    result = evaluate_criterion_text_with_ai(
+        source_text,
+        client=client,
+        model=model,
+    )
+    variants = result.get("variants") or []
+    return str(variants[0]).strip() if variants else ""
 
 def add_ai_normalized_criteria(
     extracted_rows: list[dict],

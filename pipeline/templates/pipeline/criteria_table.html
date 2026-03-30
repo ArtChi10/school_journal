@@ -88,6 +88,9 @@
               <th>Исходный критерий</th>
               <th>AI-версия</th>
               <th>Статус AI</th>
+              <th>AI-вердикт</th>
+              <th>Почему</th>
+              <th>Что исправить</th>
             </tr>
           </thead>
           <tbody>
@@ -104,9 +107,12 @@
                     {{ row.get_validation_status_display }}
                   </span>
                 </td>
+                <td>{{ row.ai_verdict|default:"" }}</td>
+                <td>{{ row.ai_why|default:"" }}</td>
+                <td>{{ row.ai_fix_suggestion|default:"" }}</td>
               </tr>
             {% empty %}
-              <tr><td class="table-empty" colspan="7">Нет данных.</td></tr>
+             <tr><td class="table-empty" colspan="10">Нет данных.</td></tr>
             {% endfor %}
           </tbody>
         </table>

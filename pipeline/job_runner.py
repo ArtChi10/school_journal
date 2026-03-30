@@ -131,25 +131,33 @@ def run_build_criteria_job(
                             )
                         else:
                             try:
-                                criterion_text_ai = normalize_criterion_text_with_ai(row["criterion_text"])
+                                ai_result = evaluate_criterion_text_with_ai(row["criterion_text"])
+                                ai_variants_json = ai_result.get("variants", [])
+                                criterion_text_ai = ai_variants_json[0] if ai_variants_json else ""
+                                ai_verdict = ai_result.get("verdict", "")
+                                ai_why = ai_result.get("why", "")
+                                ai_fix_suggestion = ai_result.get("fix", "")
                                 if criterion_text_ai:
                                     ai_ok += 1
                                     validation_status = CriterionEntry.ValidationStatus.VALID
-                                    ai_verdict = "valid"
-                                    ai_why = "AI normalization succeeded."
+                                    if not ai_verdict:
+                                        ai_verdict = "valid"
                                     last_checked_at = timezone.now()
                                 else:
                                     validation_status = CriterionEntry.ValidationStatus.INVALID
-                                    ai_verdict = "invalid"
-                                    ai_why = "AI returned an empty normalization result."
-                                    ai_fix_suggestion = "Уточните формулировку критерия и запустите проверку повторно."
+                                    if not ai_verdict:
+                                        ai_verdict = "invalid"
+                                    if not ai_why:
+                                        ai_why = "AI returned an empty normalization result."
+                                    if not ai_fix_suggestion:
+                                        ai_fix_suggestion = "Уточните формулировку критерия и запустите проверку повторно."
                                     needs_recheck = True
                                     last_checked_at = timezone.now()
                             except CriterionNormalizationError:
                                 ai_failed += 1
                                 validation_status = CriterionEntry.ValidationStatus.INVALID
-                                ai_verdict = "invalid"
-                                ai_why = "AI normalization failed."
+                                ai_verdict = "failed"
+                                ai_why = "AI response format is invalid or request failed."
                                 ai_fix_suggestion = "Проверьте критерий вручную и запустите recheck."
                                 needs_recheck = True
                                 last_checked_at = timezone.now()

@@ -5,8 +5,10 @@ from django.test import SimpleTestCase
 from openpyxl import Workbook
 
 from pipeline.services import (
+    CriterionNormalizationError,
     WorkbookReadError,
     add_ai_normalized_criteria,
+    evaluate_criterion_text_with_ai,
     extract_raw_criteria_from_workbook,
 )
 
@@ -40,15 +42,17 @@ def _build_workbook(path: Path) -> None:
     wb.save(path)
 
 class _FakeResponses:
-    def __init__(self):
+    def __init__(self, output_text='{"verdict":"valid","why":"ok","fix":"none","variants":["Нормализованный критерий"]}'):
         self.calls = []
+        self.output_text = output_text
 
     def create(self, **kwargs):
         self.calls.append(kwargs)
 
         class _Response:
-            output_text = "Нормализованный критерий"
+            output_text = ""
 
+        _Response.output_text = self.output_text
         return _Response()
 
 
@@ -126,3 +130,38 @@ class CriteriaExtractorServiceTests(SimpleTestCase):
             ["Сложная и двусмысленная формулировка", "Еще один критерий"],
         )
         self.assertEqual(len(fake_client.responses.calls), 2)
+
+    def test_evaluate_criterion_text_with_ai_retries_once_on_bad_json(self):
+        fake_client = _FakeOpenAIClient()
+        fake_client.responses.output_text = "not json"
+
+        first = True
+
+        def _create(**kwargs):
+            nonlocal first
+            fake_client.responses.calls.append(kwargs)
+
+            class _Response:
+                output_text = ""
+
+            if first:
+                _Response.output_text = "невалидный ответ"
+                first = False
+            else:
+                _Response.output_text = '{"verdict":"partial","why":"reason","fix":"fix","variants":["v1","v2"]}'
+            return _Response()
+
+        fake_client.responses.create = _create
+
+        result = evaluate_criterion_text_with_ai("Критерий", client=fake_client)
+
+        self.assertEqual(result["verdict"], "partial")
+        self.assertEqual(result["variants"], ["v1", "v2"])
+        self.assertEqual(len(fake_client.responses.calls), 2)
+
+    def test_evaluate_criterion_text_with_ai_raises_after_retry_failure(self):
+        fake_client = _FakeOpenAIClient()
+        fake_client.responses.output_text = "not json"
+
+        with self.assertRaises(CriterionNormalizationError):
+            evaluate_criterion_text_with_ai("Критерий", client=fake_client)

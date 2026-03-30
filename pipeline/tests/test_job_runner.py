@@ -50,13 +50,13 @@ class BuildCriteriaJobTests(TestCase):
             def _fake_ai(text, **_kwargs):
                 if text == "Критерий H1":
                     raise CriterionNormalizationError("ai failed")
-                return f"AI::{text}"
+                return {"verdict": "valid", "why": "ok", "fix": "-", "variants": [f"AI::{text}"]}
 
             with (
                 patch("pipeline.job_runner.run_download_descriptors_step",
                       return_value={"downloads_total":1,"downloads_success":1,"downloads_failed":0,
                                     "files":[{"link_id":1,"status":"success","path":str(workbook_path),"size_bytes":123}]}),
-                patch("pipeline.job_runner.normalize_criterion_text_with_ai", side_effect=_fake_ai),
+                patch("pipeline.job_runner.evaluate_criterion_text_with_ai", side_effect=_fake_ai),
             ):
                 job = run_build_criteria_job(class_code="4A")
 
@@ -75,6 +75,7 @@ class BuildCriteriaJobTests(TestCase):
         self.assertEqual(saved_rows.exclude(criterion_text_ai="").count(), 2)
         self.assertEqual(saved_rows.filter(validation_status=CriterionEntry.ValidationStatus.VALID).count(), 2)
         self.assertEqual(saved_rows.filter(validation_status=CriterionEntry.ValidationStatus.INVALID).count(), 1)
+        self.assertTrue(saved_rows.filter(criterion_text="Критерий H1", ai_verdict="failed").exists())
 
     def test_management_command_supports_class_code(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -94,7 +95,7 @@ class BuildCriteriaJobTests(TestCase):
                       return_value={"downloads_total":1,"downloads_success":1,
                                     "downloads_failed":0,"files":[{"link_id":1,"status":"success",
                                                                    "path":str(workbook_path),"size_bytes":123}]}),
-                patch("pipeline.job_runner.normalize_criterion_text_with_ai", return_value="AI"),
+                patch("pipeline.job_runner.evaluate_criterion_text_with_ai", return_value={"verdict":"valid","why":"ok","fix":"-","variants":["AI"]}),
             ):
                 call_command("build_criteria_table", "--class-code", "4A")
 
@@ -122,7 +123,7 @@ class BuildCriteriaJobTests(TestCase):
                         "downloads_failed": 0,
                         "files": [{"link_id": 1, "status": "success", "path": str(workbook_path), "size_bytes": 123}],
                     },
-            ), patch("pipeline.job_runner.normalize_criterion_text_with_ai", return_value="AI") as ai_mock:
+            ), patch("pipeline.job_runner.evaluate_criterion_text_with_ai", return_value={"verdict":"valid","why":"ok","fix":"-","variants":["AI"]}) as ai_mock:
                 job = run_build_criteria_job(class_code="4A")
 
         self.assertEqual(job.status, JobRun.Status.SUCCESS)
@@ -165,7 +166,7 @@ class BuildCriteriaJobTests(TestCase):
                         "downloads_failed": 0,
                         "files": [{"link_id": 1, "status": "success", "path": str(workbook_path), "size_bytes": 123}],
                     },
-            ), patch("pipeline.job_runner.normalize_criterion_text_with_ai", return_value="AI") as ai_mock:
+            ), patch("pipeline.job_runner.evaluate_criterion_text_with_ai", return_value={"verdict":"valid","why":"ok","fix":"-","variants":["AI"]}) as ai_mock:
                 run_build_criteria_job(class_code="4A")
 
         self.assertEqual(ai_mock.call_count, 3)
