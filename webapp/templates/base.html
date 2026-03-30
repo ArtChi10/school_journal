@@ -1,0 +1,67 @@
+{% load static %}
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block page_title %}School Journal{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'webapp/ui.css' %}">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <div class="layout-shell">
+    <header class="topbar">
+      <div>
+        <strong>School Journal Admin</strong>
+      </div>
+      <div class="topbar-user">
+        {% if request.user.is_authenticated %}
+          {{ request.user.username }}
+        {% endif %}
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <nav>
+        <a class="nav-link {% if request.path == '/' %}is-active{% endif %}" href="{% url 'dashboard' %}">Дашборд</a>
+
+        {% if perms.journal_links.view_classsheetlink %}
+          <a class="nav-link {% if '/links/' in request.path %}is-active{% endif %}" href="{% url 'journal_links:list_links' %}">Классы и таблицы</a>
+        {% endif %}
+
+        {% if perms.pipeline.view_criterionentry %}
+          <a class="nav-link {% if '/criteria-table/' in request.path %}is-active{% endif %}" href="{% url 'pipeline:criteria_table' %}">Таблица критериев</a>
+        {% endif %}
+
+        {% if perms.jobs.view_jobrun %}
+          <a class="nav-link {% if '/runs/' in request.path %}is-active{% endif %}" href="{% url 'job_run_list' %}">Запуски</a>
+        {% endif %}
+
+        <a class="nav-link {% if '/healthz' in request.path or '/readyz' in request.path %}is-active{% endif %}" href="{% url 'readyz' %}">Мониторинг</a>
+      </nav>
+    </aside>
+
+    <main class="content">
+      {% if messages %}
+        <section class="flash-stack">
+          {% for message in messages %}
+            <div class="flash flash-{{ message.tags|default:'info' }}">{{ message }}</div>
+          {% endfor %}
+        </section>
+      {% endif %}
+
+      {% block breadcrumbs %}{% endblock %}
+
+      <section class="page-head">
+        <h1>{% block page_heading %}Страница{% endblock %}</h1>
+        <div class="page-head-actions">
+          {% block page_actions %}{% endblock %}
+        </div>
+      </section>
+
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

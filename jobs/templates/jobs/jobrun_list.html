@@ -1,117 +1,100 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Job runs</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 24px; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-    th { background: #f8f8f8; }
-    .status-badge {
-      display: inline-flex;
-      align-items: center;
-      border-radius: 999px;
-      padding: 3px 10px;
-      font-size: 12px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: .03em;
-      color: #fff;
-    }
-    .status-queued { background: #667085; }
-    .status-running { background: #175cd3; }
-    .status-success { background: #027a48; }
-    .status-partial { background: #b54708; }
-    .status-failed { background: #b42318; }
-  </style>
-</head>
-<body>
-  <h1>Запуски</h1>
-  {% if perms.jobs.run_full_pipeline %}
-  <form method="post" action="{% url 'run_full_pipeline' %}" style="margin: 12px 0;">
-    {% csrf_token %}
-    <button type="submit">Запустить полный пайплайн</button>
-  </form>
-  {% endif %}
-  <form method="get">
-    <label>
-      Status:
-      <select name="status">
-        <option value="">All</option>
-        {% for value, label in status_choices %}
-          <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>
+
+{% extends "base.html" %}
+
+{% block page_title %}Запуски{% endblock %}
+{% block page_heading %}Запуски{% endblock %}
+
+{% block page_actions %}
+   {% if perms.jobs.run_full_pipeline %}
+
+    <form class="inline" method="post" action="{% url 'run_full_pipeline' %}">
+      {% csrf_token %}
+      <button class="btn btn-primary" type="submit">Запустить полный пайплайн</button>
+    </form>
+   {% endif %}
+{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <form method="get" class="filters">
+      <label>
+        Status
+        <select name="status">
+          <option value="">All</option>
+          {% for value, label in status_choices %}
+            <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label>
+        Job type
+        <select name="job_type">
+          <option value="">All</option>
+          {% for jt in job_type_choices %}
+            <option value="{{ jt }}" {% if filters.job_type == jt %}selected{% endif %}>{{ jt }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label>
+        Started from
+        <input type="date" name="started_from" value="{{ filters.started_from }}">
+      </label>
+
+      <label>
+        Started to
+        <input type="date" name="started_to" value="{{ filters.started_to }}">
+      </label>
+
+     <div class="inline-actions">
+        <button class="btn btn-secondary" type="submit">Apply</button>
+        <a class="btn btn-secondary" href="{% url 'job_run_list' %}">Reset</a>
+      </div>
+    </form>
+
+    <table class="table">
+      <thead>
+         <tr>
+          <th>ID</th>
+          <th>Job type</th>
+          <th>Status</th>
+          <th>Started at</th>
+          <th>Finished at</th>
+          <th>Details</th>
+         </tr>
+      </thead>
+      <tbody>
+        {% for run in page_obj %}
+          <tr>
+            <td>{{ run.id }}</td>
+            <td>{{ run.job_type }}</td>
+            <td><span class="badge badge-{{ run.status_meta.css }} status-{{ run.status_meta.css }}">{{ run.status_meta.label }}</span></td>
+            <td>{{ run.started_at|default:"—" }}</td>
+            <td>{{ run.finished_at|default:"—" }}</td>
+            <td>
+              <a class="btn btn-secondary" href="{% url 'job_run_detail' run.id %}{% if querystring %}?{{ querystring }}{% endif %}">Open</a>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td class="table-empty" colspan="6">No runs found.</td></tr>
         {% endfor %}
-      </select>
-    </label>
+      </tbody>
+    </table>
 
-    <label>
-      Job type:
-      <select name="job_type">
-        <option value="">All</option>
-        {% for jt in job_type_choices %}
-          <option value="{{ jt }}" {% if filters.job_type == jt %}selected{% endif %}>{{ jt }}</option>
-        {% endfor %}
-      </select>
-    </label>
+    {% if page_obj.paginator.num_pages > 1 %}
+      <nav class="pager inline-actions">
+        {% if page_obj.has_previous %}
+          <a class="btn btn-secondary" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
+        {% endif %}
 
-    <label>
-      Started from:
-      <input type="date" name="started_from" value="{{ filters.started_from }}">
-    </label>
+        <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
 
-    <label>
-      Started to:
-      <input type="date" name="started_to" value="{{ filters.started_to }}">
-    </label>
 
-    <button type="submit">Apply</button>
-    <a href="{% url 'job_run_list' %}">Reset</a>
-  </form>
-
-  <table>
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>Job type</th>
-        <th>Status</th>
-        <th>Started at</th>
-        <th>Finished at</th>
-        <th>Details</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for run in page_obj %}
-        <tr>
-          <td>{{ run.id }}</td>
-          <td>{{ run.job_type }}</td>
-          <td><span class="status-badge status-{{ run.status_meta.css }}">{{ run.status_meta.label }}</span></td>
-          <td>{{ run.started_at|default:"—" }}</td>
-          <td>{{ run.finished_at|default:"—" }}</td>
-          <td>
-            <a href="{% url 'job_run_detail' run.id %}{% if querystring %}?{{ querystring }}{% endif %}">Open</a>
-          </td>
-        </tr>
-      {% empty %}
-        <tr>
-          <td colspan="6">No runs found.</td>
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  {% if page_obj.paginator.num_pages > 1 %}
-    <nav>
-      {% if page_obj.has_previous %}
-        <a href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
-      {% endif %}
-
-      <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
-
-      {% if page_obj.has_next %}
-        <a href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.next_page_number }}">Next</a>
-      {% endif %}
-    </nav>
-  {% endif %}
-</body>
-</html>
+        {% if page_obj.has_next %}
+          <a class="btn btn-secondary" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.next_page_number }}">Next</a>
+        {% endif %}
+      </nav>
+    {% endif %}
+  </div>
+{% endblock %}

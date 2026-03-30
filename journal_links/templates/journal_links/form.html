@@ -1,17 +1,27 @@
-<!doctype html>
-<html lang="ru">
-<head>
-  <meta charset="utf-8">
-  <title>{{ title }}</title>
-</head>
-<body>
-  <h1>{{ title }}</h1>
+{% extends "base.html" %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block page_heading %}{{ title }}{% endblock %}
 
-  <form method="post">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">{{ submit_label }}</button>
-    <a href="{% url 'journal_links:list_links' %}">Назад</a>
-  </form>
-</body>
-</html>
+{% block breadcrumbs %}
+  <nav class="breadcrumbs">
+    <a href="{% url 'journal_links:list_links' %}">Классы и таблицы</a> /
+    <span>{% if 'редактировать' in title|lower %}Редактирование{% else %}Создание{% endif %}</span>
+  </nav>
+{% endblock %}
+
+{% block page_actions %}
+  <a class="btn btn-secondary" href="{% url 'journal_links:list_links' %}">Назад</a>
+{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <form method="post">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <div class="inline-actions">
+        <button class="btn btn-primary" type="submit">{{ submit_label }}</button>
+        <a class="btn btn-secondary" href="{% url 'journal_links:list_links' %}">Отмена</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

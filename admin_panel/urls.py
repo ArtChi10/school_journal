@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.urls import include, path
+from django.views.generic import RedirectView
 from jobs.views import (
     export_run_issues_csv,
     export_run_issues_json,
@@ -12,6 +13,7 @@ from notifications.views import telegram_webhook
 from admin_panel.monitoring_views import healthz, readyz
 
 urlpatterns = [
+    path("", RedirectView.as_view(pattern_name="journal_links:list_links", permanent=False), name="dashboard"),
     path("admin/", admin.site.urls),
     path("healthz", healthz, name="healthz"),
     path("readyz", readyz, name="readyz"),
