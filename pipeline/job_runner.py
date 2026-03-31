@@ -8,6 +8,7 @@ from django.utils import timezone
 from jobs.models import JobLog, JobRun
 from jobs.services import log_step
 from journal_links.models import ClassSheetLink
+from pipeline.audit import log_criterion_event
 from pipeline.models import CriterionEntry, ValidCriterionTemplate, normalize_criterion_name
 from pipeline.services import (
     CriterionNormalizationError,
@@ -162,7 +163,7 @@ def run_build_criteria_job(
                                 needs_recheck = True
                                 last_checked_at = timezone.now()
 
-                        _, _created = CriterionEntry.objects.update_or_create(
+                        entry, _created = CriterionEntry.objects.update_or_create(
                             class_code=row["class_code"],
                             subject_name=row["subject_name"],
                             module_number=row["module_number"],
@@ -179,6 +180,19 @@ def run_build_criteria_job(
                                 "last_checked_at": last_checked_at,
                                 "source_sheet_name": row["source_sheet_name"],
                                 "source_workbook": row["source_workbook"],
+                            },
+                        )
+                        log_criterion_event(
+                            entry,
+                            event_type="ai_verdict",
+                            actor_name="AI Validator",
+                            actor_role="system",
+                            reason=ai_why,
+                            payload={
+                                "ai_verdict": ai_verdict,
+                                "validation_status": validation_status,
+                                "needs_recheck": needs_recheck,
+                                "job_run_id": str(job_run.id),
                             },
                         )
                         updated_rows += 1

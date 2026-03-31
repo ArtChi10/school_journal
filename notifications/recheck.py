@@ -4,6 +4,7 @@ from django.utils import timezone
 
 from jobs.models import JobLog, JobRun
 from jobs.services import log_step
+from pipeline.audit import log_criterion_event
 from pipeline.models import CriterionEntry, ValidCriterionTemplate, normalize_criterion_name
 from pipeline.services import CriterionNormalizationError, evaluate_criterion_text_with_ai
 
@@ -51,6 +52,14 @@ def _apply_whitelist_if_matches(entry: CriterionEntry, active_templates: set[str
             "last_checked_at",
             "updated_at",
         ]
+    )
+    log_criterion_event(
+        entry,
+        event_type="recheck",
+        actor_name="AI Recheck",
+        actor_role="system",
+        reason="Validated by whitelist template during teacher recheck.",
+        payload={"result": "override"},
     )
     return True
 
@@ -120,6 +129,19 @@ def run_teacher_recheck_for_job(job_run: JobRun, *, teacher_name: str) -> dict:
                     "updated_at",
                 ]
             )
+            log_criterion_event(
+                entry,
+                event_type="recheck",
+                actor_name="AI Recheck",
+                actor_role="system",
+                reason=entry.ai_why,
+                payload={
+                    "ai_verdict": entry.ai_verdict,
+                    "validation_status": entry.validation_status,
+                    "needs_recheck": entry.needs_recheck,
+                    "job_run_id": str(job_run.id),
+                },
+            )
         except CriterionNormalizationError:
             failed += 1
             entry.validation_status = CriterionEntry.ValidationStatus.RECHECK
@@ -138,6 +160,19 @@ def run_teacher_recheck_for_job(job_run: JobRun, *, teacher_name: str) -> dict:
                     "last_checked_at",
                     "updated_at",
                 ]
+            )
+            log_criterion_event(
+                entry,
+                event_type="recheck",
+                actor_name="AI Recheck",
+                actor_role="system",
+                reason=entry.ai_why,
+                payload={
+                    "ai_verdict": entry.ai_verdict,
+                    "validation_status": entry.validation_status,
+                    "needs_recheck": entry.needs_recheck,
+                    "job_run_id": str(job_run.id),
+                },
             )
 
     summary = {

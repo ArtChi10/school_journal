@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block page_title %}История критерия{% endblock %}
+{% block page_heading %}История решений по критерию{% endblock %}
+
+{% block breadcrumbs %}
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0">
+      <li class="breadcrumb-item"><a href="{% url 'pipeline:criteria_failures' %}">Проблемные критерии</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Критерий #{{ criterion.id }}</li>
+    </ol>
+  </nav>
+{% endblock %}
+
+{% block page_actions %}
+  <a class="btn btn-outline-secondary" href="{% url 'pipeline:criteria_failures' %}">← К списку</a>
+  <a class="btn btn-outline-primary" href="?export=json">Экспорт JSON</a>
+  <a class="btn btn-outline-primary" href="?export=csv">Экспорт CSV</a>
+{% endblock %}
+
+{% block content %}
+  <section class="card mb-4">
+    <div class="card-body">
+      <p class="mb-1"><strong>Класс/предмет:</strong> {{ criterion.class_code }} / {{ criterion.subject_name }}</p>
+      <p class="mb-1"><strong>Учитель:</strong> {{ criterion.teacher_name }}</p>
+      <p class="mb-1"><strong>Модуль:</strong> {{ criterion.module_number }}</p>
+      <p class="mb-0"><strong>Критерий:</strong> {{ criterion.criterion_text }}</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Когда</th>
+              <th>Что</th>
+              <th>Кто</th>
+              <th>Роль</th>
+              <th>Причина</th>
+              <th>Детали</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for event in events %}
+              <tr>
+                <td>{{ event.created_at }}</td>
+                <td>{{ event.event_type }}</td>
+                <td>{{ event.actor_name|default:"—" }}</td>
+                <td>{{ event.actor_role|default:"—" }}</td>
+                <td>{{ event.reason|default:"—" }}</td>
+                <td><pre class="mb-0">{{ event.payload_json }}</pre></td>
+              </tr>
+            {% empty %}
+              <tr><td class="table-empty" colspan="6">Событий пока нет.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+{% endblock %}

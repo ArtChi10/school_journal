@@ -8,6 +8,8 @@ from django.views.decorators.csrf import csrf_exempt
 from jobs.models import JobLog, JobRun
 from jobs.services import log_step
 
+from pipeline.audit import log_criterion_event
+from pipeline.models import CriterionEntry
 from .models import TeacherConfirmation, TeacherContact
 from .recheck import run_teacher_recheck_job
 from .services import TelegramSendError, send_telegram
@@ -165,6 +167,16 @@ def _handle_teacher_confirmation(contact: TeacherContact, text: str) -> str:
             "explicit_job_id": explicit_job_id or "",
         },
     )
+    criteria = CriterionEntry.objects.filter(teacher_name=contact.name, needs_recheck=True)
+    for criterion in criteria:
+        log_criterion_event(
+            criterion,
+            event_type="teacher_confirmed",
+            actor_name=contact.name,
+            actor_role="teacher",
+            reason=text,
+            payload={"job_run_id": str(job_run.id), "chat_id": str(contact.chat_id)},
+        )
     cycle = _detect_next_recheck_cycle(job_run, teacher_name=contact.name, chat_id=str(contact.chat_id))
     max_cycles = _get_recheck_max_cycles()
     if cycle > max_cycles:

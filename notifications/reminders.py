@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from jobs.models import JobLog, JobRun
 from jobs.services import log_step
+from pipeline.audit import log_criterion_event
 from pipeline.models import CriterionEntry
 
 from .models import NotificationEvent, TeacherContact
@@ -117,7 +118,7 @@ def _build_teacher_message(payload: dict) -> str:
             "Проверено критериев: "
             f"{checked_count} "
             f"(valid: {status_counts.get('valid', 0)}, "
-            f"override: {status_counts.get('override', 0)}, "
+            f"override: {status_counts.get('override', 0) + status_counts.get('overridden_valid', 0)}, "
             f"invalid: {status_counts.get('invalid', 0)}, "
             f"recheck: {status_counts.get('recheck', 0)})"
         ),
@@ -317,6 +318,20 @@ def _collect_teacher_payloads() -> dict[str, dict]:
             grouped_by_teacher[teacher_name] = payload
     return grouped_by_teacher
 
+def _log_notification_events_for_teacher(*, teacher_name: str, payload_hash: str) -> None:
+    criteria = CriterionEntry.objects.filter(
+        teacher_name=teacher_name,
+        validation_status__in=(CriterionEntry.ValidationStatus.INVALID, CriterionEntry.ValidationStatus.RECHECK),
+    )
+    for entry in criteria:
+        log_criterion_event(
+            entry,
+            event_type="notification_sent",
+            actor_name="Reminder Bot",
+            actor_role="system",
+            payload={"teacher": teacher_name, "payload_hash": payload_hash},
+        )
+
 
 def send_validation_reminders_for_job(job_run: JobRun) -> dict:
     grouped_by_teacher = _collect_teacher_payloads()
@@ -383,6 +398,7 @@ def send_validation_reminders_for_job(job_run: JobRun) -> dict:
                 status=NotificationEvent.Status.SENT,
                 payload_hash=event_payload_hash,
             )
+            _log_notification_events_for_teacher(teacher_name=teacher_name, payload_hash=event_payload_hash)
             sent += 1
             _log(
                 job_run,

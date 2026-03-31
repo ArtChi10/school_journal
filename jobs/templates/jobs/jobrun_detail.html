@@ -14,7 +14,10 @@
 
 {% block page_actions %}
 <a class="btn btn-outline-secondary" href="{% url 'job_run_list' %}{% if back_query %}?{{ back_query }}{% endif %}">← Назад к списку</a>
-   {% if perms.jobs.send_reminders %}
+ {% if perms.pipeline.view_criterionentry %}
+    <a class="btn btn-outline-primary" href="{% url 'pipeline:criteria_failures' %}">Следующий шаг: Recheck проблемных критериев</a>
+  {% endif %}
+{% if perms.jobs.send_reminders %}
 
    <form method="post" action="{% url 'send_reminders' job_run.id %}">
        {% csrf_token %}

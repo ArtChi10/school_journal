@@ -8,8 +8,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from admin_panel.authz import permission_required_403
+from pipeline.audit import log_criterion_event
 from pipeline.forms import ParentContactForm, ParentContactsImportForm, ValidCriterionTemplateForm
-from pipeline.models import CriterionEntry, ParentContact, ValidCriterionTemplate
+from pipeline.models import CriterionEntry, CriterionReviewEvent, ParentContact, ValidCriterionTemplate
 from pipeline.parent_contacts import import_parent_contacts_csv
 
 
@@ -19,6 +20,11 @@ def _parse_non_empty(value: str | None) -> str | None:
 
     trimmed = value.strip()
     return trimmed or None
+
+
+def _is_admin_role(user) -> bool:
+    return bool(user.is_superuser or user.groups.filter(name="admin").exists())
+
 
 @login_required
 @permission_required_403("pipeline.view_criterionentry", message="Доступ запрещён: нет прав на просмотр таблицы критериев.")
@@ -123,6 +129,7 @@ def criteria_failures(request):
                 "criterion_text",
                 "ai_verdict",
                 "ai_comment_or_fix",
+                "id",
             ]
         )
         for row in queryset:
@@ -135,6 +142,7 @@ def criteria_failures(request):
                     row.criterion_text,
                     row.ai_verdict,
                     f"{row.ai_why} / {row.ai_fix_suggestion}",
+                    row.id,
                 ]
             )
         return response
@@ -149,6 +157,7 @@ def criteria_failures(request):
                 "criterion_text": row.criterion_text,
                 "ai_verdict": row.ai_verdict,
                 "ai_comment_or_fix": f"{row.ai_why} / {row.ai_fix_suggestion}",
+                "id": row.id,
             }
             for row in queryset
         ]
@@ -199,10 +208,85 @@ def criteria_failures(request):
             "class_counters": class_counters,
             "teacher_counters": teacher_counters,
             "querystring": query_without_export,
+            "can_override": _is_admin_role(request.user),
         },
     )
 
+@login_required
+@permission_required_403("pipeline.view_criterionentry", message="Доступ запрещён: нет прав на просмотр критерия.")
+def criterion_detail(request, pk):
+    criterion = get_object_or_404(CriterionEntry, pk=pk)
+    events = criterion.review_events.all().order_by("created_at", "id")
+    export_format = _parse_non_empty(request.GET.get("export"))
 
+    if export_format == "json":
+        payload = [
+            {
+                "when": event.created_at.isoformat(),
+                "event_type": event.event_type,
+                "actor_name": event.actor_name,
+                "actor_role": event.actor_role,
+                "reason": event.reason,
+                "payload": event.payload_json,
+            }
+            for event in events
+        ]
+        return JsonResponse(payload, safe=False)
+
+    if export_format == "csv":
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = f'attachment; filename="criterion_{criterion.id}_history.csv"'
+        writer = csv.writer(response)
+        writer.writerow(["when", "event_type", "actor_name", "actor_role", "reason", "payload_json"])
+        for event in events:
+            writer.writerow(
+                [
+                    event.created_at.isoformat(),
+                    event.event_type,
+                    event.actor_name,
+                    event.actor_role,
+                    event.reason,
+                    event.payload_json,
+                ]
+            )
+        return response
+
+    return render(
+        request,
+        "pipeline/criterion_detail.html",
+        {"criterion": criterion, "events": events, "can_override": _is_admin_role(request.user)},
+    )
+
+
+@require_POST
+@login_required
+@permission_required_403("pipeline.change_criterionentry", message="Доступ запрещён: нельзя менять критерий.")
+def override_criterion_valid(request, pk):
+    if not _is_admin_role(request.user):
+        messages.error(request, "Доступ запрещён: override доступен только роли admin.")
+        return HttpResponse("forbidden", status=403)
+
+    criterion = get_object_or_404(CriterionEntry, pk=pk)
+    reason = (request.POST.get("reason") or "").strip()
+    if not reason:
+        messages.error(request, "Причина обязательна для override.")
+        return redirect(request.POST.get("next") or "pipeline:criteria_failures")
+
+    criterion.validation_status = CriterionEntry.ValidationStatus.OVERRIDDEN_VALID
+    criterion.ai_verdict = "overridden_valid"
+    criterion.ai_why = reason
+    criterion.needs_recheck = False
+    criterion.save(update_fields=["validation_status", "ai_verdict", "ai_why", "needs_recheck", "updated_at"])
+    log_criterion_event(
+        criterion,
+        event_type=CriterionReviewEvent.EventType.OVERRIDDEN_VALID,
+        actor_name=request.user.username,
+        actor_role="admin",
+        reason=reason,
+        payload={"new_status": "overridden_valid"},
+    )
+    messages.success(request, "Критерий помечен как валидный по ручному override.")
+    return redirect(request.POST.get("next") or "pipeline:criteria_failures")
 
 @login_required
 @permission_required_403("pipeline.view_parentcontact", message="Доступ запрещён: нет прав на просмотр контактов родителей.")

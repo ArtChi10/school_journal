@@ -121,6 +121,52 @@ class CriteriaFailuresViewTests(TestCase):
         payload = json.loads(json_response.content.decode("utf-8"))
         self.assertEqual(payload[0]["criterion_text"], "Проблемный критерий")
 
+    def test_admin_can_override_with_reason(self):
+        self.user.user_permissions.add(Permission.objects.get(codename="change_criterionentry"))
+        from django.contrib.auth.models import Group
+
+        admin_group, _ = Group.objects.get_or_create(name="admin")
+        self.user.groups.add(admin_group)
+        criterion = CriterionEntry.objects.get(criterion_text="Проблемный критерий")
+        response = self.client.post(
+            reverse("pipeline:override_criterion_valid", args=[criterion.id]),
+            {"reason": "Проверено вручную", "next": reverse("pipeline:criteria_failures")},
+        )
+        self.assertEqual(response.status_code, 302)
+        criterion.refresh_from_db()
+        self.assertEqual(criterion.validation_status, CriterionEntry.ValidationStatus.OVERRIDDEN_VALID)
+        self.assertEqual(criterion.ai_verdict, "overridden_valid")
+        self.assertEqual(criterion.review_events.filter(event_type="overridden_valid").count(), 1)
+
+    def test_override_requires_reason(self):
+        self.user.user_permissions.add(Permission.objects.get(codename="change_criterionentry"))
+        from django.contrib.auth.models import Group
+
+        admin_group, _ = Group.objects.get_or_create(name="admin")
+        self.user.groups.add(admin_group)
+        criterion = CriterionEntry.objects.get(criterion_text="Проблемный критерий")
+        response = self.client.post(
+            reverse("pipeline:override_criterion_valid", args=[criterion.id]),
+            {"reason": "   ", "next": reverse("pipeline:criteria_failures")},
+        )
+        self.assertEqual(response.status_code, 302)
+        criterion.refresh_from_db()
+        self.assertEqual(criterion.validation_status, CriterionEntry.ValidationStatus.INVALID)
+
+    def test_criterion_history_export_json(self):
+        criterion = CriterionEntry.objects.get(criterion_text="Проблемный критерий")
+        criterion.review_events.create(
+            event_type="ai_verdict",
+            actor_name="AI",
+            actor_role="system",
+            reason="invalid",
+            payload_json={"a": 1},
+        )
+        response = self.client.get(reverse("pipeline:criterion_detail", args=[criterion.id]), {"export": "json"})
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode("utf-8"))
+        self.assertEqual(payload[0]["event_type"], "ai_verdict")
+
 
 class ParentContactsViewTests(TestCase):
     def setUp(self):

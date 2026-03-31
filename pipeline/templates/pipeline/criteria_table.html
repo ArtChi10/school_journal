@@ -12,6 +12,9 @@
 {% endblock %}
 
 {% block page_actions %}
+{% if perms.pipeline.view_criterionentry %}
+    <a class="btn btn-outline-primary" href="{% url 'pipeline:criteria_failures' %}">Следующий шаг: Двоечники</a>
+  {% endif %}
   {% if perms.jobs.run_full_pipeline %}
  <form method="post" action="{% url 'run_full_pipeline' %}">
       {% csrf_token %}
@@ -103,7 +106,7 @@
                 <td>{{ row.criterion_text }}</td>
                 <td>{{ row.criterion_text_ai|default:"" }}</td>
                 <td>
-                  <span class="badge badge-soft {% if row.validation_status == 'valid' or row.validation_status == 'override' %}badge-success{% elif row.validation_status == 'pending' %}badge-warn{% else %}badge-failed{% endif %}">
+                  <span class="badge badge-soft {% if row.validation_status == 'valid' or row.validation_status == 'override' or row.validation_status == 'overridden_valid' %}badge-success{% elif row.validation_status == 'pending' %}badge-warn{% else %}badge-failed{% endif %}">
                     {{ row.get_validation_status_display }}
                   </span>
                 </td>

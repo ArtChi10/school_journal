@@ -2,6 +2,8 @@ from django.urls import path
 
 from .views import (
     criteria_failures,
+    criterion_detail,
+    override_criterion_valid,
     criteria_table,
     parent_contact_create,
     parent_contact_disable,
@@ -19,6 +21,8 @@ app_name = "pipeline"
 urlpatterns = [
     path("criteria-table/", criteria_table, name="criteria_table"),
     path("criteria-failures/", criteria_failures, name="criteria_failures"),
+    path("criteria/<int:pk>/", criterion_detail, name="criterion_detail"),
+    path("criteria/<int:pk>/override-valid/", override_criterion_valid, name="override_criterion_valid"),
     path("parent-contacts/", parent_contacts_list, name="parent_contacts_list"),
     path("parent-contacts/create/", parent_contact_create, name="parent_contact_create"),
     path("parent-contacts/<int:pk>/edit/", parent_contact_edit, name="parent_contact_edit"),

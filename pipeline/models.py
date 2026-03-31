@@ -14,6 +14,7 @@ class CriterionEntry(models.Model):
         VALID = "valid", "Valid"
         INVALID = "invalid", "Invalid"
         OVERRIDE = "override", "Override"
+        OVERRIDDEN_VALID = "overridden_valid", "Overridden valid"
         RECHECK = "recheck", "Recheck"
     class_code = models.CharField(max_length=64)
     subject_name = models.CharField(max_length=255)
@@ -53,6 +54,37 @@ class CriterionEntry(models.Model):
 
     def __str__(self) -> str:
         return f"{self.class_code} / {self.subject_name} / M{self.module_number}"
+
+
+class CriterionReviewEvent(models.Model):
+    class EventType(models.TextChoices):
+        AI_VERDICT = "ai_verdict", "AI verdict"
+        NOTIFICATION_SENT = "notification_sent", "Notification sent"
+        TEACHER_CONFIRMED = "teacher_confirmed", "Teacher confirmed"
+        RECHECK = "recheck", "Recheck"
+        OVERRIDDEN_VALID = "overridden_valid", "Overridden valid"
+
+    criterion = models.ForeignKey(
+        CriterionEntry,
+        on_delete=models.CASCADE,
+        related_name="review_events",
+    )
+    event_type = models.CharField(max_length=32, choices=EventType.choices)
+    actor_name = models.CharField(max_length=255, blank=True, default="")
+    actor_role = models.CharField(max_length=64, blank=True, default="")
+    reason = models.TextField(blank=True, default="")
+    payload_json = models.JSONField(blank=True, default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        indexes = [
+            models.Index(fields=["criterion", "created_at"]),
+            models.Index(fields=["event_type", "created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.criterion_id}::{self.event_type}@{self.created_at.isoformat()}"
 
 
 class ValidCriterionTemplate(models.Model):

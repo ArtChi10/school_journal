@@ -1,7 +1,11 @@
 {% extends "base.html" %}
 {% block page_title %}Проблемные критерии{% endblock %}
 {% block page_heading %}Проблемные критерии{% endblock %}
-
+{% block page_actions %}
+  {% if perms.jobs.view_jobrun %}
+    <a class="btn btn-outline-primary" href="{% url 'job_run_list' %}">Следующий шаг: Уведомить учителей</a>
+  {% endif %}
+{% endblock %}
 {% block breadcrumbs %}
  <nav aria-label="breadcrumb" class="mb-3">
     <ol class="breadcrumb mb-0">
@@ -110,6 +114,7 @@
               <th>Критерий</th>
               <th>Статус</th>
               <th>Комментарий AI / Что исправить</th>
+               <th>Действия</th>
             </tr>
           </thead>
           <tbody>
@@ -125,9 +130,22 @@
                   <div>{{ row.ai_why|default:"" }}</div>
                   <div class="text-secondary">{{ row.ai_fix_suggestion|default:"" }}</div>
                 </td>
+                  <td>
+                  <div class="d-flex flex-column gap-2">
+                    <a class="btn btn-outline-secondary btn-sm" href="{% url 'pipeline:criterion_detail' row.id %}">История</a>
+                    {% if can_override %}
+                      <form method="post" action="{% url 'pipeline:override_criterion_valid' row.id %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                        <input class="form-control form-control-sm mb-1" type="text" name="reason" placeholder="Причина override" required>
+                        <button class="btn btn-success btn-sm w-100" type="submit">Считать валидным</button>
+                      </form>
+                    {% endif %}
+                  </div>
+                </td>
               </tr>
             {% empty %}
-              <tr><td class="table-empty" colspan="7">Нет данных.</td></tr>
+               <tr><td class="table-empty" colspan="8">Нет данных.</td></tr>
             {% endfor %}
           </tbody>
         </table>
