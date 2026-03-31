@@ -118,7 +118,7 @@ LOGGING = {
     },
     "handlers": {
         "console": {
-            "class": "logging.StreamHandler",
+            "class": "admin_panel.logging_handlers.SafeStreamHandler",
             "formatter": "verbose",
         },
         "app_file": {

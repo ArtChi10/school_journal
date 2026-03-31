@@ -12,14 +12,19 @@ class ClassSheetLinkForm(forms.ModelForm):
 
     class Meta:
         model = ClassSheetLink
-        fields = ["class_code", "subject_name", "teacher_name", "google_sheet_url", "is_active"]
+        fields = ["class_code", "google_sheet_url", "is_active"]
         labels = {
             "class_code": "Класс",
-            "subject_name": "Предмет",
-            "teacher_name": "Учитель",
             "google_sheet_url": "Ссылка на Google Sheet",
             "is_active": "Активна",
         }
+        help_texts = {
+            "google_sheet_url": "Нужна ссылка на всю таблицу Google Sheets, не на отдельный лист.",
+        }
+
+    def clean_class_code(self):
+        return (self.cleaned_data.get("class_code") or "").strip()
+
 
     def clean_google_sheet_url(self):
         url = (self.cleaned_data.get("google_sheet_url") or "").strip()
