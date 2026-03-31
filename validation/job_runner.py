@@ -4,7 +4,7 @@ import re
 import tempfile
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 from urllib.request import urlopen
 
 from django.utils import timezone
@@ -50,30 +50,15 @@ def _extract_google_sheet_file_id(url: str) -> str | None:
     return match.group(1)
 
 
-def _extract_gid(url: str) -> str | None:
-    parsed = urlparse(url)
-    query_gid = parse_qs(parsed.query).get("gid", [None])[0]
-    if query_gid:
-        return query_gid
-
-    if parsed.fragment:
-        for part in parsed.fragment.split("&"):
-            if part.startswith("gid="):
-                return part.replace("gid=", "", 1)
-
-    return None
-
 
 def _build_export_url(url: str) -> str:
     file_id = _extract_google_sheet_file_id(url)
     if not file_id:
         return url
 
-    export_url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
-    gid = _extract_gid(url)
-    if gid:
-        export_url = f"{export_url}&gid={gid}"
-    return export_url
+        # NOTE: do not include gid when exporting as xlsx.
+        # Google returns a workbook with all sheets when gid is omitted.
+    return f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
 
 
 def _require_env_path(var_name: str) -> Path:

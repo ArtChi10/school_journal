@@ -10,7 +10,7 @@ from openpyxl import Workbook
 
 from jobs.models import JobRun
 from journal_links.models import ClassSheetLink
-from validation.job_runner import fetch_workbook_for_link, run_check_missing_data_job, run_validation_job
+from validation.job_runner import _build_export_url, fetch_workbook_for_link, run_check_missing_data_job, run_validation_job
 from notifications.models import NotificationEvent
 
 ALLOWED_DESCRIPTOR = "Выполняет самостоятельно | Independent"
@@ -82,6 +82,14 @@ class FetchWorkbookAccessModeTests(TestCase):
                 with self.assertRaisesRegex(Exception, "GOOGLE_OAUTH_TOKEN_PATH"):
                     fetch_workbook_for_link(self.link)
 
+    def test_build_export_url_ignores_gid_and_exports_full_workbook(self):
+        export_url = _build_export_url(self.link.google_sheet_url)
+        self.assertEqual(export_url, "https://docs.google.com/spreadsheets/d/abc123/export?format=xlsx")
+        self.assertNotIn("gid=", export_url)
+
+    def test_build_export_url_keeps_non_google_urls(self):
+        url = "https://example.com/file.xlsx"
+        self.assertEqual(_build_export_url(url), url)
 
 
 

@@ -255,7 +255,14 @@ def telegram_webhook(request: HttpRequest) -> JsonResponse:
         # Supported format from deep-link: /start register_<token>
         parts = text.split(maxsplit=1)
         if len(parts) < 2 or not parts[1].startswith("register_"):
-            return JsonResponse({"ok": True, "status": "ignored"})
+            try:
+                send_telegram(
+                    str(chat_id),
+                    "Введите имя и фамилию как в системе (пример: Иван Иванов), чтобы привязать Telegram.",
+                )
+            except TelegramSendError:
+                pass
+            return JsonResponse({"ok": True, "status": "awaiting_name"})
         token = parts[1].replace("register_", "", 1).strip()
         if not token:
             return JsonResponse({"ok": True, "status": "ignored"})
@@ -283,7 +290,42 @@ def telegram_webhook(request: HttpRequest) -> JsonResponse:
 
     contact = TeacherContact.objects.filter(chat_id=str(chat_id)).first()
     if not contact:
-        return JsonResponse({"ok": True, "status": "ignored"})
+        typed_name = " ".join(text.split())
+        if not typed_name:
+            return JsonResponse({"ok": True, "status": "ignored"})
+
+        candidate = TeacherContact.objects.filter(name__iexact=typed_name).first()
+        if not candidate:
+            try:
+                send_telegram(
+                    str(chat_id),
+                    "Учитель с таким именем не найден. Обратитесь к администратору.",
+                )
+            except TelegramSendError:
+                pass
+            return JsonResponse({"ok": True, "status": "teacher_not_found"})
+
+        if candidate.chat_id and candidate.chat_id != str(chat_id):
+            try:
+                send_telegram(
+                    str(chat_id),
+                    "Этот учитель уже привязан к другому чату. Обратитесь к администратору.",
+                )
+            except TelegramSendError:
+                pass
+            return JsonResponse({"ok": True, "status": "already_linked"})
+
+        candidate.chat_id = str(chat_id)
+        candidate.is_active = True
+        candidate.last_seen_at = timezone.now()
+        candidate.registration_token = None
+        candidate.save(update_fields=["chat_id", "is_active", "last_seen_at", "registration_token"])
+        try:
+            send_telegram(candidate.chat_id, f"Регистрация успешна. Контакт привязан: {candidate.name}.")
+        except TelegramSendError:
+            pass
+        return JsonResponse({"ok": True, "status": "registered_by_name", "teacher": candidate.name})
+
 
     contact.last_seen_at = timezone.now()
     contact.save(update_fields=["last_seen_at"])
