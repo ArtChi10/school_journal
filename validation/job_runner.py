@@ -293,7 +293,15 @@ def run_validation_job(
                 )
             finally:
                 if temp_file and temp_file.exists():
-                    temp_file.unlink(missing_ok=True)
+                    try:
+                        temp_file.unlink(missing_ok=True)
+                    except PermissionError as exc:
+                        log_step(
+                            job_run=job_run,
+                            level=JobLog.Level.WARNING,
+                            message="Could not remove temporary workbook file",
+                            context={"path": str(temp_file), "reason": str(exc)},
+                        )
 
         summary = {
             "total": len(aggregated_issues),
@@ -390,7 +398,15 @@ def run_check_missing_data_job(*, link_id: int | None = None, class_code: str | 
                 log_step(job_run=job_run, level=JobLog.Level.ERROR, message="Missing data check failed for table", context={"link_id": link.id, "reason": str(exc)})
             finally:
                 if temp_file and temp_file.exists():
-                    temp_file.unlink(missing_ok=True)
+                    try:
+                        temp_file.unlink(missing_ok=True)
+                    except PermissionError as exc:
+                        log_step(
+                            job_run=job_run,
+                            level=JobLog.Level.WARNING,
+                            message="Could not remove temporary workbook file",
+                            context={"path": str(temp_file), "reason": str(exc)},
+                        )
 
         job_run.result_json = {"issues": aggregated_issues}
         summary_payload = build_missing_data_summary(job_run)

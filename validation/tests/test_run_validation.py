@@ -130,6 +130,19 @@ class RunValidationJobTests(TestCase):
         with self.assertRaises(CommandError):
             call_command("run_validation", "--all-active", "--class-code", "5A")
 
+    def test_run_validation_job_keeps_result_when_temp_file_cleanup_fails(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = Path(tmpdir) / "valid_locked.xlsx"
+            _build_valid_workbook(workbook_path)
+
+            with patch("validation.job_runner.fetch_workbook_for_link", return_value=workbook_path):
+                with patch("pathlib.Path.unlink", side_effect=PermissionError("file is locked")):
+                    job_run = run_validation_job(link_id=self.link.id)
+
+        self.assertEqual(job_run.status, JobRun.Status.SUCCESS)
+        self.assertEqual(job_run.result_json["summary"]["tables_total"], 1)
+        self.assertEqual(job_run.result_json["summary"]["tables_success"], 1)
+        self.assertTrue(job_run.logs.filter(message="Could not remove temporary workbook file").exists())
     @patch("validation.job_runner.send_telegram")
     def test_check_missing_data_job_is_idempotent_by_payload_hash(self, send_telegram_mock):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -166,3 +179,18 @@ class RunValidationJobTests(TestCase):
                 status=NotificationEvent.Status.SENT,
             ).exists()
         )
+
+    @patch("validation.job_runner.send_telegram")
+    def test_check_missing_data_job_keeps_result_when_temp_file_cleanup_fails(self, send_telegram_mock):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = Path(tmpdir) / "valid_missing_cleanup.xlsx"
+            _build_valid_workbook(workbook_path)
+
+            with self.settings(ADMIN_LOG_CHAT_ID="999"):
+                with patch("validation.job_runner.fetch_workbook_for_link", return_value=workbook_path):
+                    with patch("pathlib.Path.unlink", side_effect=PermissionError("file is locked")):
+                        job_run = run_check_missing_data_job(all_active=True)
+
+        self.assertEqual(job_run.status, JobRun.Status.SUCCESS)
+        self.assertEqual((job_run.result_json or {}).get("telegram", {}).get("status"), "sent")
+        self.assertTrue(job_run.logs.filter(message="Could not remove temporary workbook file").exists())

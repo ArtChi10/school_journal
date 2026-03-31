@@ -1,0 +1,160 @@
+{
+  "summary": {
+    "total": 8,
+    "critical": 1,
+    "warning": 7,
+    "info": 0,
+    "sheets_total": 1,
+    "sheets_validated": 1,
+    "sheets_skipped": 0,
+    "students_total": 5,
+    "issues_by_code": {
+      "CRITERION_EXPECTS_LEVEL": 5,
+      "RETAKE_REQUIRED": 1,
+      "TEST_SCORE_NOT_NUMERIC": 1,
+      "TEST_SCORE_OUT_OF_RANGE": 1
+    }
+  },
+  "issues": [
+    {
+      "code": "CRITERION_EXPECTS_LEVEL",
+      "severity": "warning",
+      "sheet": "Русский язык | Russian",
+      "row": 7,
+      "student": "Александр Махсои",
+      "field": "col_7",
+      "message": "В колонке критерия ожидается уровень, получено число: 0.0",
+      "class_code": "11А",
+      "subject_name": "Русский язык | Russian",
+      "teacher_name": "Анастасия Амле",
+      "module_number": 5,
+      "column_type": "criterion",
+      "issue_group": null,
+      "missing_count": 1
+    },
+    {
+      "code": "RETAKE_REQUIRED",
+      "severity": "critical",
+      "sheet": "Русский язык | Russian",
+      "row": 7,
+      "student": "Александр Махсои",
+      "field": "col_10",
+      "message": "Нужно указать пересдачу при низком тестовом балле (тестовая колонка: col_8, значение: 38)",
+      "class_code": "11А",
+      "subject_name": "Русский язык | Russian",
+      "teacher_name": "Анастасия Амле",
+      "module_number": 5,
+      "column_type": "retake",
+      "issue_group": "grades",
+      "missing_count": 1
+    },
+    {
+      "code": "CRITERION_EXPECTS_LEVEL",
+      "severity": "warning",
+      "sheet": "Русский язык | Russian",
+      "row": 8,
+      "student": "Анна Рудько",
+      "field": "col_7",
+      "message": "В колонке критерия ожидается уровень, получено число: 95.0",
+      "class_code": "11А",
+      "subject_name": "Русский язык | Russian",
+      "teacher_name": "Анастасия Амле",
+      "module_number": 5,
+      "column_type": "criterion",
+      "issue_group": null,
+      "missing_count": 1
+    },
+    {
+      "code": "CRITERION_EXPECTS_LEVEL",
+      "severity": "warning",
+      "sheet": "Русский язык | Russian",
+      "row": 9,
+      "student": "Роман Синицын",
+      "field": "col_7",
+      "message": "В колонке критерия ожидается уровень, получено число: 82.0",
+      "class_code": "11А",
+      "subject_name": "Русский язык | Russian",
+      "teacher_name": "Анастасия Амле",
+      "module_number": 5,
+      "column_type": "criterion",
+      "issue_group": null,
+      "missing_count": 1
+    },
+    {
+      "code": "TEST_SCORE_NOT_NUMERIC",
+      "severity": "warning",
+      "sheet": "Русский язык | Russian",
+      "row": 9,
+      "student": "Роман Синицын",
+      "field": "col_8",
+      "message": "Тестовый балл не число: -",
+      "class_code": "11А",
+      "subject_name": "Русский язык | Russian",
+      "teacher_name": "Анастасия Амле",
+      "module_number": 5,
+      "column_type": "test",
+      "issue_group": null,
+      "missing_count": 1
+    },
+    {
+      "code": "CRITERION_EXPECTS_LEVEL",
+      "severity": "warning",
+      "sheet": "Русский язык | Russian",
+      "row": 10,
+      "student": "Арина Смирнова",
+      "field": "col_7",
+      "message": "В колонке критерия ожидается уровень, получено число: 0.0",
+      "class_code": "11А",
+      "subject_name": "Русский язык | Russian",
+      "teacher_name": "Анастасия Амле",
+      "module_number": 5,
+      "column_type": "criterion",
+      "issue_group": null,
+      "missing_count": 1
+    },
+    {
+      "code": "TEST_SCORE_OUT_OF_RANGE",
+      "severity": "warning",
+      "sheet": "Русский язык | Russian",
+      "row": 10,
+      "student": "Арина Смирнова",
+      "field": "col_8",
+      "message": "Баллы вне диапазона 0-100: 102.0",
+      "class_code": "11А",
+      "subject_name": "Русский язык | Russian",
+      "teacher_name": "Анастасия Амле",
+      "module_number": 5,
+      "column_type": "test",
+      "issue_group": null,
+      "missing_count": 1
+    },
+    {
+      "code": "CRITERION_EXPECTS_LEVEL",
+      "severity": "warning",
+      "sheet": "Русский язык | Russian",
+      "row": 11,
+      "student": "Оскар Хинчли",
+      "field": "col_7",
+      "message": "В колонке критерия ожидается уровень, получено число: 36.0",
+      "class_code": "11А",
+      "subject_name": "Русский язык | Russian",
+      "teacher_name": "Анастасия Амле",
+      "module_number": 5,
+      "column_type": "criterion",
+      "issue_group": null,
+      "missing_count": 1
+    }
+  ],
+  "sheet_events": [
+    {
+      "event": "sheet_detected",
+      "sheet_name": "Русский язык | Russian",
+      "sheet_type": "subject"
+    },
+    {
+      "event": "sheet_validated",
+      "sheet_name": "Русский язык | Russian",
+      "sheet_type": "subject"
+    }
+  ]
+}

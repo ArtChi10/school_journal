@@ -256,6 +256,7 @@ def parse_subject_sheet(ws) -> dict:
     }
 
 def validate_workbook(path: str) -> dict:
+    wb = None
     try:
         wb = load_workbook(path, data_only=True)
     except (FileNotFoundError, InvalidFileException, BadZipFile, OSError) as exc:
@@ -313,11 +314,15 @@ def validate_workbook(path: str) -> dict:
         "issues_by_code": issues_by_code,
     }
 
-    return {
-        "summary": summary,
-        "issues": [asdict(i) for i in issues],
-        "sheet_events": sheet_events,
-    }
+    try:
+        return {
+            "summary": summary,
+            "issues": [asdict(i) for i in issues],
+            "sheet_events": sheet_events,
+        }
+    finally:
+        if wb is not None:
+            wb.close()
 
 
 def validate_sheet(ws, sheet_name: str, parsed: dict | None = None) -> list[ValidationIssue]:
