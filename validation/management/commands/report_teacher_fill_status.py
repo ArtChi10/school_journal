@@ -133,4 +133,64 @@ class Command(BaseCommand):
             f"Преподавателей в срезе: {report['teachers_total']}",
             "",
         ]
+        for group in TARGET_GROUPS:
+            filled = report["by_group"][group]["filled"]
+            not_filled = report["by_group"][group]["not_filled"]
+            lines.append(f"{GROUP_TITLES[group]}:")
+            lines.append(f"✅ Заполнили ({len(filled)}): {', '.join(filled) if filled else '-'}")
+            lines.append(f"❌ Не заполнили ({len(not_filled)}): {', '.join(not_filled) if not_filled else '-'}")
+            lines.append("")
+
+        return "\n".join(lines).strip()
+
+    def _get_job_run_from_id(self, job_id: str) -> JobRun:
+        try:
+            job_run = JobRun.objects.get(id=job_id)
+        except (ValueError, JobRun.DoesNotExist) as exc:
+            raise CommandError(f"Validation JobRun not found: {job_id}") from exc
+
+        if job_run.job_type not in VALIDATION_JOB_TYPES:
+            raise CommandError(
+                f"JobRun {job_run.id} has unsupported job_type={job_run.job_type}. "
+                f"Expected one of: {', '.join(VALIDATION_JOB_TYPES)}"
+            )
+        return job_run
+
+    def _get_latest_validation_job(self) -> JobRun:
+        job_run = (
+            JobRun.objects.filter(job_type__in=VALIDATION_JOB_TYPES)
+            .order_by("-started_at", "-finished_at")
+            .first()
+        )
+        if not job_run:
+            raise CommandError("No validation JobRun found. Run validation first or pass --run-all-active.")
+        return job_run
+
+    def handle(self, *args, **options):
+        selected_count = sum(bool(v) for v in [options.get("job_id"), options.get("run_all_active")])
+        if selected_count > 1:
+            raise CommandError("Use only one option: --job-id or --run-all-active")
+
+        if options.get("run_all_active"):
+            job_run = run_validation_job(all_active=True)
+        elif options.get("job_id"):
+            job_run = self._get_job_run_from_id(options["job_id"])
+        else:
+            job_run = self._get_latest_validation_job()
+
+        report = self._build_report_data(job_run)
+        console_text = self._build_console_text(report)
+        self.stdout.write(console_text)
+
+        admin_chat_id = str(getattr(settings, "ADMIN_LOG_CHAT_ID", "")).strip()
+        if not admin_chat_id:
+            self.stdout.write(self.style.WARNING("ADMIN_LOG_CHAT_ID is not configured, Telegram send skipped"))
+            return
+
+        telegram_text = self._build_telegram_text(report)
+        try:
+            send_telegram(admin_chat_id, telegram_text, retries=1, job_run_id=job_run.id)
+            self.stdout.write(self.style.SUCCESS(f"Telegram report sent to ADMIN_LOG_CHAT_ID={admin_chat_id}"))
+        except TelegramSendError as exc:
+            raise CommandError(f"Failed to send Telegram report: {exc}") from exc
 
