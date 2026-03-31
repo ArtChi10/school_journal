@@ -2,7 +2,7 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 from admin_panel.authz import permission_required_403
-from validation.job_runner import run_validation_job
+from validation.job_runner import run_check_missing_data_job, run_validation_job
 
 from .forms import ClassSheetLinkForm
 from .models import ClassSheetLink
@@ -66,4 +66,15 @@ def disable_link(request, pk):
 def run_link_validation(request, pk):
     link = get_object_or_404(ClassSheetLink, pk=pk)
     job_run = run_validation_job(link_id=link.id, initiated_by=request.user if request.user.is_authenticated else None)
+    return redirect("job_run_detail", run_id=job_run.id)
+
+
+@require_POST
+@login_required
+@permission_required_403("jobs.run_check_missing_data", message="Доступ запрещён: нельзя запускать проверку незаполненности.")
+def run_missing_data_check(request):
+    job_run = run_check_missing_data_job(
+        all_active=True,
+        initiated_by=request.user if request.user.is_authenticated else None,
+    )
     return redirect("job_run_detail", run_id=job_run.id)

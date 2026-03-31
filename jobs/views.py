@@ -8,6 +8,7 @@ import json
 from django.views.decorators.http import require_POST
 from admin_panel.authz import permission_required_403
 from notifications.reminders import run_validation_reminders_job
+from validation.job_runner import run_check_missing_data_job
 
 from pipeline.full_pipeline_runner import run_full_pipeline
 
@@ -124,6 +125,8 @@ ISSUES_EXPORT_COLUMNS = [
     "code",
     "severity",
     "message",
+    "issue_group",
+    "missing_count",
 ]
 
 def _extract_issues_payload(job_run: JobRun) -> list[dict]:
@@ -132,6 +135,23 @@ def _extract_issues_payload(job_run: JobRun) -> list[dict]:
         return []
     return [item for item in payload if isinstance(item, dict)]
 
+
+def _apply_issue_filters(issues: list[dict], request) -> list[dict]:
+    code = _parse_non_empty(request.GET.get("code"))
+    teacher = _parse_non_empty(request.GET.get("teacher"))
+    class_code = _parse_non_empty(request.GET.get("class_code"))
+    subject = _parse_non_empty(request.GET.get("subject_name"))
+
+    filtered = issues
+    if code:
+        filtered = [i for i in filtered if str(i.get("code", "")) == code]
+    if teacher:
+        filtered = [i for i in filtered if teacher.lower() in str(i.get("teacher_name", "")).lower()]
+    if class_code:
+        filtered = [i for i in filtered if class_code.lower() in str(i.get("class_code", "")).lower()]
+    if subject:
+        filtered = [i for i in filtered if subject.lower() in str(i.get("subject_name", "")).lower()]
+    return filtered
 
 def _normalize_issue_row(issue: dict) -> dict[str, str]:
     normalized: dict[str, str] = {}
@@ -217,6 +237,8 @@ def job_run_detail(request, run_id):
 
     step_rows = _build_step_rows(job_run, logs, pipeline_steps, errors_payload)
     problem_step = _resolve_problem_step(step_rows)
+    issues = _extract_issues_payload(job_run)
+    filtered_issues = _apply_issue_filters(issues, request)
     return render(
         request,
         "jobs/jobrun_detail.html",
@@ -232,6 +254,13 @@ def job_run_detail(request, run_id):
             "artifacts_payload": artifacts_payload,
             "errors_payload": errors_payload,
             "confirmations": confirmations,
+            "issues": filtered_issues,
+            "issue_filters": {
+                "code": request.GET.get("code", ""),
+                "teacher": request.GET.get("teacher", ""),
+                "class_code": request.GET.get("class_code", ""),
+                "subject_name": request.GET.get("subject_name", ""),
+            },
         },
     )
 
@@ -244,7 +273,7 @@ class _Echo:
 @permission_required_403("jobs.view_jobrun", message="Доступ запрещён: нет прав на экспорт issues.")
 def export_run_issues_json(request, run_id):
     job_run = get_object_or_404(JobRun, id=run_id)
-    issues = _extract_issues_payload(job_run)
+    issues = _apply_issue_filters(_extract_issues_payload(job_run), request)
     body = json.dumps(issues, ensure_ascii=False, indent=2)
     response = HttpResponse(body, content_type="application/json; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="run-{job_run.id}-issues.json"'
@@ -255,7 +284,7 @@ def export_run_issues_json(request, run_id):
 @permission_required_403("jobs.view_jobrun", message="Доступ запрещён: нет прав на экспорт issues.")
 def export_run_issues_csv(request, run_id):
     job_run = get_object_or_404(JobRun, id=run_id)
-    issues = _extract_issues_payload(job_run)
+    issues = _apply_issue_filters(_extract_issues_payload(job_run), request)
 
     writer = csv.DictWriter(_Echo(), fieldnames=ISSUES_EXPORT_COLUMNS)
 
@@ -294,3 +323,10 @@ def send_reminders_view(request, run_id):
         ),
     )
     return redirect("job_run_detail", run_id=reminder_job_run.id)
+
+@login_required
+@require_POST
+@permission_required_403("jobs.run_check_missing_data", message="Доступ запрещён: нельзя запускать проверку незаполненности.")
+def run_missing_data_check_view(request):
+    job_run = run_check_missing_data_job(initiated_by=request.user if request.user.is_authenticated else None)
+    return redirect("job_run_detail", run_id=job_run.id)

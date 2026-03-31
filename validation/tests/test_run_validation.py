@@ -10,7 +10,8 @@ from openpyxl import Workbook
 
 from jobs.models import JobRun
 from journal_links.models import ClassSheetLink
-from validation.job_runner import fetch_workbook_for_link, run_validation_job
+from validation.job_runner import fetch_workbook_for_link, run_check_missing_data_job, run_validation_job
+from notifications.models import NotificationEvent
 
 ALLOWED_DESCRIPTOR = "Выполняет самостоятельно | Independent"
 
@@ -128,3 +129,40 @@ class RunValidationJobTests(TestCase):
 
         with self.assertRaises(CommandError):
             call_command("run_validation", "--all-active", "--class-code", "5A")
+
+    @patch("validation.job_runner.send_telegram")
+    def test_check_missing_data_job_is_idempotent_by_payload_hash(self, send_telegram_mock):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_path = Path(tmpdir) / "problem_source.xlsx"
+            _build_valid_workbook(source_path)
+
+            from openpyxl import load_workbook
+            wb = load_workbook(source_path)
+            ws = wb.active
+            ws.cell(row=4, column=3, value="")  # descriptor empty
+            wb.save(source_path)
+
+            generated_paths: list[Path] = []
+
+            def _provide_copy(_link):
+                path = Path(tmpdir) / f"problem_{len(generated_paths)}.xlsx"
+                path.write_bytes(source_path.read_bytes())
+                generated_paths.append(path)
+                return path
+
+            with self.settings(ADMIN_LOG_CHAT_ID="999"):
+                with patch("validation.job_runner.fetch_workbook_for_link", side_effect=_provide_copy):
+                    first = run_check_missing_data_job(all_active=True)
+                    second = run_check_missing_data_job(all_active=True)
+
+        self.assertEqual(first.job_type, "check_missing_data")
+        self.assertEqual(first.result_json["telegram"]["status"], "sent")
+        self.assertEqual(second.result_json["telegram"]["status"], "skipped_duplicate")
+        self.assertEqual(send_telegram_mock.call_count, 1)
+        self.assertTrue(
+            NotificationEvent.objects.filter(
+                job_run=first,
+                teacher_name="__admin_missing_data__",
+                status=NotificationEvent.Status.SENT,
+            ).exists()
+        )

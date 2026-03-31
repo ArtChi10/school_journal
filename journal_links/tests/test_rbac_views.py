@@ -64,3 +64,18 @@ class JournalLinksRBACViewsTests(TestCase):
         response = self.client.get(reverse("journal_links:list_links"))
 
         self.assertEqual(response.status_code, 200)
+
+    def test_missing_data_check_forbidden_without_permission(self):
+        self.client.force_login(self.user)
+        response = self.client.post(reverse("journal_links:run_missing_data_check"))
+        self.assertEqual(response.status_code, 403)
+
+    def test_missing_data_check_allowed_with_permission(self):
+        self._grant("run_check_missing_data")
+        self.client.force_login(self.user)
+        fake_job = JobRun(id=uuid4())
+        with patch("journal_links.views.run_check_missing_data_job", return_value=fake_job) as mocked:
+            response = self.client.post(reverse("journal_links:run_missing_data_check"))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("job_run_detail", kwargs={"run_id": fake_job.id}))
+        mocked.assert_called_once_with(all_active=True, initiated_by=self.user)

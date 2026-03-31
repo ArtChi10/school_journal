@@ -3,6 +3,12 @@
 {% block page_heading %}Классы и таблицы{% endblock %}
 
 {% block page_actions %}
+ {% if perms.jobs.run_check_missing_data %}
+    <form method="post" action="{% url 'journal_links:run_missing_data_check' %}">
+      {% csrf_token %}
+      <button class="btn btn-warning" type="submit">Проверить незаполненные (лог-чат)</button>
+    </form>
+  {% endif %}
   {% if perms.journal_links.add_classsheetlink %}
     <a class="btn btn-primary" href="{% url 'journal_links:create_link' %}">Добавить ссылку</a>
   {% endif %}

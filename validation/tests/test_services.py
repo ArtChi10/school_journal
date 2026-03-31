@@ -151,6 +151,8 @@ class ValidateWorkbookTests(SimpleTestCase):
             "teacher_name",
             "module_number",
             "column_type",
+            "issue_group",
+            "missing_count",
         }
         for issue in result["issues"]:
             self.assertEqual(set(issue.keys()), required_issue_keys)
@@ -169,6 +171,12 @@ class ValidateWorkbookTests(SimpleTestCase):
 
         column_types = {item["column_type"] for item in result["issues"] if item["column_type"] is not None}
         self.assertTrue(column_types.issubset({"criterion", "test", "comment", "retake"}))
+
+    def test_missing_descriptor_uses_new_code_and_group(self):
+        result = validate_workbook(str(self.problem_file))
+        descriptor_issues = [i for i in result["issues"] if i["code"] == "DESCRIPTOR_EMPTY"]
+        self.assertTrue(descriptor_issues)
+        self.assertEqual(descriptor_issues[0]["issue_group"], "descriptor")
 
     def test_read_errors_raise_predictable_exception(self):
         with self.assertRaises(WorkbookReadError):
@@ -536,7 +544,7 @@ class ValidateSheetMetadataTests(SimpleTestCase):
 
         issues = validate_sheet(ws, "Meta")
 
-        descriptor_issues = [i for i in issues if i.code == "MISSING_DESCRIPTOR_META"]
+        descriptor_issues = [i for i in issues if i.code == "DESCRIPTOR_EMPTY"]
         self.assertEqual(len(descriptor_issues), 1)
         self.assertEqual(descriptor_issues[0].severity, "critical")
         self.assertEqual(descriptor_issues[0].row, 4)

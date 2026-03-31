@@ -12,6 +12,8 @@ class JournalLinkViewsTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="u", password="p")
         self.user.user_permissions.add(Permission.objects.get(codename="run_validation"))
+        self.user.user_permissions.add(Permission.objects.get(codename="run_check_missing_data"))
+        self.user.user_permissions.add(Permission.objects.get(codename="view_classsheetlink"))
         self.client.force_login(self.user)
         self.link = ClassSheetLink.objects.create(
             class_code="7B",
@@ -29,3 +31,7 @@ class JournalLinkViewsTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse("job_run_detail", kwargs={"run_id": fake_job.id}))
         mocked.assert_called_once_with(link_id=self.link.id, initiated_by=self.user)
+
+    def test_list_shows_missing_data_check_button_with_permission(self):
+        response = self.client.get(reverse("journal_links:list_links"))
+        self.assertContains(response, "Проверить незаполненные (лог-чат)")

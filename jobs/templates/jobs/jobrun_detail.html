@@ -24,8 +24,8 @@
        <button class="btn btn-primary" type="submit">Отправить уведомления учителям</button>
      </form>
    {% endif %}
-  <a class="btn btn-outline-secondary" href="{% url 'export_run_issues_json' job_run.id %}">Export JSON</a>
-  <a class="btn btn-outline-secondary" href="{% url 'export_run_issues_csv' job_run.id %}">Export CSV</a>
+  <a class="btn btn-outline-secondary" href="{% url 'export_run_issues_json' job_run.id %}?code={{ issue_filters.code }}&teacher={{ issue_filters.teacher }}&class_code={{ issue_filters.class_code }}&subject_name={{ issue_filters.subject_name }}">Export JSON</a>
+  <a class="btn btn-outline-secondary" href="{% url 'export_run_issues_csv' job_run.id %}?code={{ issue_filters.code }}&teacher={{ issue_filters.teacher }}&class_code={{ issue_filters.class_code }}&subject_name={{ issue_filters.subject_name }}">Export CSV</a>
 {% endblock %}
 
 {% block content %}
@@ -94,7 +94,47 @@
           </div>
          </section>
        {% endif %}
-
+ <section class="card mb-4">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Issues</h2>
+          <form method="get" class="row g-2 mb-3">
+            <div class="col-md-3">
+              <select name="code" class="form-select">
+                <option value="">Все коды</option>
+                <option value="DESCRIPTOR_EMPTY" {% if issue_filters.code == "DESCRIPTOR_EMPTY" %}selected{% endif %}>DESCRIPTOR_EMPTY</option>
+                <option value="CRITERIA_HEADERS_EMPTY" {% if issue_filters.code == "CRITERIA_HEADERS_EMPTY" %}selected{% endif %}>CRITERIA_HEADERS_EMPTY</option>
+                <option value="GRADE_EMPTY" {% if issue_filters.code == "GRADE_EMPTY" %}selected{% endif %}>GRADE_EMPTY</option>
+              </select>
+            </div>
+            <div class="col-md-3"><input class="form-control" type="text" name="teacher" placeholder="teacher" value="{{ issue_filters.teacher }}"></div>
+            <div class="col-md-2"><input class="form-control" type="text" name="class_code" placeholder="class" value="{{ issue_filters.class_code }}"></div>
+            <div class="col-md-3"><input class="form-control" type="text" name="subject_name" placeholder="subject" value="{{ issue_filters.subject_name }}"></div>
+            <div class="col-md-1"><button class="btn btn-outline-secondary w-100" type="submit">OK</button></div>
+          </form>
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead><tr><th>Teacher</th><th>Class</th><th>Subject</th><th>Code</th><th>Group</th><th>Missing</th><th>Message</th></tr></thead>
+              <tbody>
+                {% for issue in issues %}
+                  <tr>
+                    <td>{{ issue.teacher_name }}</td><td>{{ issue.class_code }}</td><td>{{ issue.subject_name }}</td><td>{{ issue.code }}</td><td>{{ issue.issue_group }}</td><td>{{ issue.missing_count|default:1 }}</td><td>{{ issue.message }}</td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="7" class="table-empty">Проблем не найдено.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+      <section class="card mb-4">
+        <div class="card-body">
+          {% if job_run.result_json.telegram %}
+            <h2 class="h5 mb-3">Admin summary delivery</h2>
+            <p class="mb-0">status: {{ job_run.result_json.telegram.status }}{% if job_run.result_json.telegram.reason %}, reason: {{ job_run.result_json.telegram.reason }}{% endif %}</p>
+          {% endif %}
+        </div>
+      </section>
       <section class="card mb-4">
         <div class="card-body">
           <h2 class="h5 mb-3">Timeline logs</h2>

@@ -92,3 +92,8 @@ class RBACJobViewsTests(TestCase):
         response = self.client.get(reverse("export_run_issues_csv", kwargs={"run_id": self.job.id}))
 
         self.assertEqual(response.status_code, 200)
+
+    def test_run_missing_data_check_forbidden_without_permission(self):
+        self.client.force_login(self.user)
+        response = self.client.post(reverse("run_missing_data_check"))
+        self.assertEqual(response.status_code, 403)

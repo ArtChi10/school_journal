@@ -10,6 +10,12 @@
        <button class="btn btn-primary" type="submit">Запустить полный пайплайн</button>
      </form>
   {% endif %}
+{% if perms.jobs.run_check_missing_data %}
+    <form method="post" action="{% url 'run_missing_data_check' %}">
+      {% csrf_token %}
+      <button class="btn btn-warning" type="submit">Проверить незаполненные (лог-чат)</button>
+    </form>
+  {% endif %}
  {% endblock %}
 
  {% block content %}

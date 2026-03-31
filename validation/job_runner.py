@@ -12,7 +12,13 @@ from django.utils import timezone
 from jobs.models import JobLog, JobRun
 from jobs.services import log_step
 from journal_links.models import ClassSheetLink
+from notifications.models import NotificationEvent
+from notifications.services import TelegramSendError, send_telegram
+from validation.admin_summary import build_missing_data_summary, split_summary_for_telegram
 from validation.services import validate_workbook
+from django.conf import settings
+import hashlib
+import json
 
 _GOOGLE_SHEET_RE = re.compile(r"/spreadsheets/d/([a-zA-Z0-9-_]+)")
 GOOGLE_ACCESS_MODE_PUBLIC = "public_link"
@@ -334,4 +340,105 @@ def run_validation_job(
         job_run.save(update_fields=["status", "finished_at"])
         log_step(job_run=job_run, level=JobLog.Level.ERROR, message=f"Validation run failed: {exc}")
 
+    return job_run
+
+def _normalize_issue_context(issue: dict, link: ClassSheetLink) -> dict:
+    issue = dict(issue)
+    issue["teacher_name"] = (issue.get("teacher_name") or "").strip() or link.teacher_name
+    issue["class_code"] = (issue.get("class_code") or "").strip() or link.class_code
+    issue["subject_name"] = (issue.get("subject_name") or "").strip() or link.subject_name
+    if not issue.get("issue_group"):
+        code = issue.get("code")
+        if code == "DESCRIPTOR_EMPTY":
+            issue["issue_group"] = "descriptor"
+        elif code == "CRITERIA_HEADERS_EMPTY":
+            issue["issue_group"] = "criteria"
+        elif code == "GRADE_EMPTY":
+            issue["issue_group"] = "grades"
+    issue["missing_count"] = int(issue.get("missing_count") or 1)
+    return issue
+
+
+def _payload_hash(payload: dict) -> str:
+    serialized_payload = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(serialized_payload.encode("utf-8")).hexdigest()
+
+
+def run_check_missing_data_job(*, link_id: int | None = None, class_code: str | None = None, all_active: bool = True, initiated_by=None) -> JobRun:
+    links = _collect_links(link_id=link_id, class_code=class_code, all_active=all_active)
+    params = {"link_id": link_id, "class_code": class_code, "all_active": all_active}
+    job_run = JobRun.objects.create(
+        job_type="check_missing_data",
+        status=JobRun.Status.RUNNING,
+        started_at=timezone.now(),
+        params_json=params,
+        initiated_by=initiated_by,
+    )
+    aggregated_issues: list[dict] = []
+    telegram_status = "not_configured"
+    telegram_reason = ""
+    try:
+        for link in links:
+            temp_file: Path | None = None
+            try:
+                temp_file = fetch_workbook_for_link(link)
+                result = validate_workbook(str(temp_file))
+                for issue in result.get("issues", []):
+                    if issue.get("code") in {"DESCRIPTOR_EMPTY", "CRITERIA_HEADERS_EMPTY", "GRADE_EMPTY"}:
+                        aggregated_issues.append(_normalize_issue_context(issue, link))
+            except Exception as exc:
+                log_step(job_run=job_run, level=JobLog.Level.ERROR, message="Missing data check failed for table", context={"link_id": link.id, "reason": str(exc)})
+            finally:
+                if temp_file and temp_file.exists():
+                    temp_file.unlink(missing_ok=True)
+
+        job_run.result_json = {"issues": aggregated_issues}
+        summary_payload = build_missing_data_summary(job_run)
+        payload_hash = _payload_hash({"issues": sorted(aggregated_issues, key=lambda i: (i.get("teacher_name", ""), i.get("class_code", ""), i.get("subject_name", ""), i.get("code", ""), i.get("row") or 0, i.get("field") or ""))})
+        admin_chat_id = (getattr(settings, "ADMIN_LOG_CHAT_ID", "") or "").strip()
+        if not admin_chat_id:
+            telegram_status = "failed"
+            telegram_reason = "ADMIN_LOG_CHAT_ID is not configured"
+        else:
+            already_sent = NotificationEvent.objects.filter(
+                job_run__job_type="check_missing_data",
+                channel=NotificationEvent.Channel.TELEGRAM,
+                payload_hash=payload_hash,
+                status=NotificationEvent.Status.SENT,
+            ).exists()
+            if already_sent:
+                telegram_status = "skipped_duplicate"
+            else:
+                try:
+                    for chunk in split_summary_for_telegram(summary_payload["text"]):
+                        send_telegram(admin_chat_id, chunk, job_run_id=job_run.id)
+                    telegram_status = "sent"
+                    NotificationEvent.objects.create(
+                        job_run=job_run,
+                        teacher_name="__admin_missing_data__",
+                        channel=NotificationEvent.Channel.TELEGRAM,
+                        status=NotificationEvent.Status.SENT,
+                        payload_hash=payload_hash,
+                    )
+                except TelegramSendError as exc:
+                    telegram_status = "failed"
+                    telegram_reason = str(exc)
+
+        job_run.result_json = {
+            "summary": summary_payload,
+            "issues": aggregated_issues,
+            "telegram": {"status": telegram_status, "reason": telegram_reason},
+        }
+        if telegram_status == "failed":
+            final_status = JobRun.Status.PARTIAL if aggregated_issues else JobRun.Status.FAILED
+        else:
+            final_status = JobRun.Status.SUCCESS
+        job_run.status = final_status
+        job_run.finished_at = timezone.now()
+        job_run.save(update_fields=["result_json", "status", "finished_at"])
+    except Exception as exc:
+        job_run.status = JobRun.Status.FAILED
+        job_run.finished_at = timezone.now()
+        job_run.result_json = {"issues": aggregated_issues, "telegram": {"status": "failed", "reason": str(exc)}}
+        job_run.save(update_fields=["status", "finished_at", "result_json"])
     return job_run

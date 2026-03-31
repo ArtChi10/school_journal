@@ -35,6 +35,8 @@ class ValidationIssue:
     teacher_name: str | None = None
     module_number: int | None = None
     column_type: str | None = None
+    issue_group: str | None = None
+    missing_count: int = 1
 
 
 class WorkbookReadError(ValueError):
@@ -339,6 +341,8 @@ def validate_sheet(ws, sheet_name: str, parsed: dict | None = None) -> list[Vali
             student: str | None,
             field: str | None,
             message: str,
+            issue_group: str | None = None,
+            missing_count: int = 1,
     ) -> ValidationIssue:
         column_type = None
         if field and field.startswith("col_"):
@@ -362,6 +366,8 @@ def validate_sheet(ws, sheet_name: str, parsed: dict | None = None) -> list[Vali
             teacher_name=teacher_meta or None,
             module_number=module_number,
             column_type=column_type,
+            issue_group=issue_group,
+            missing_count=missing_count,
         )
 
     if _is_empty(class_meta):
@@ -397,12 +403,13 @@ def validate_sheet(ws, sheet_name: str, parsed: dict | None = None) -> list[Vali
     descriptor_meta = str(metadata.get("descriptor", "")).strip()
     if _is_empty(descriptor_meta):
         issues.append(make_issue(
-            code="MISSING_DESCRIPTOR_META",
+            code="DESCRIPTOR_EMPTY",
             severity="critical",
             row=4,
             student=None,
             field="meta_descriptor",
             message="Не заполнено поле «Дескриптор | Descriptor» (C4). Заполните описание дескриптора в ячейке C4.",
+            issue_group="descriptor",
         ))
 
     criteria_cols = parsed["criteria_cols"]
@@ -417,12 +424,13 @@ def validate_sheet(ws, sheet_name: str, parsed: dict | None = None) -> list[Vali
             v = ws.cell(row=row, column=col).value
             if _is_empty(v):
                 issues.append(make_issue(
-                    code="EMPTY_CRITERION",
+                    code="CRITERIA_HEADERS_EMPTY",
                     severity="critical",
                     row=row,
                     student=student_name,
                     field=f"col_{col}",
                     message="Не заполнен критерий оценивания",
+                    issue_group="criteria",
                 ))
             else:
                 sv = str(v).strip()
@@ -450,6 +458,15 @@ def validate_sheet(ws, sheet_name: str, parsed: dict | None = None) -> list[Vali
         for col in test_cols:
             raw = ws.cell(row=row, column=col).value
             if _is_empty(raw):
+                issues.append(make_issue(
+                    code="GRADE_EMPTY",
+                    severity="critical",
+                    row=row,
+                    student=student_name,
+                    field=f"col_{col}",
+                    message="Не заполнена оценка (тестовый балл)",
+                    issue_group="grades",
+                ))
                 continue
             try:
                 score = float(raw)
@@ -508,6 +525,7 @@ def validate_sheet(ws, sheet_name: str, parsed: dict | None = None) -> list[Vali
                             "Нужен комментарий при низком тестовом балле"
                             f"{low_score_message_suffix}"
                         ),
+                        issue_group="grades",
                     ))
             if RETAKE_REQUIRED_IF_LOW_SCORE and retake_col:
                 r = ws.cell(row=row, column=retake_col).value
@@ -522,6 +540,7 @@ def validate_sheet(ws, sheet_name: str, parsed: dict | None = None) -> list[Vali
                             "Нужно указать пересдачу при низком тестовом балле"
                             f"{low_score_message_suffix}"
                         ),
+                        issue_group="grades",
                     ))
 
 

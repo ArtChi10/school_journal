@@ -8,6 +8,7 @@ ROLE_PERMISSIONS = {
         "jobs.run_validation",
         "jobs.run_full_pipeline",
         "jobs.send_reminders",
+"jobs.run_check_missing_data",
         "journal_links.view_classsheetlink",
         "journal_links.add_classsheetlink",
         "journal_links.change_classsheetlink",
@@ -20,6 +21,7 @@ ROLE_PERMISSIONS = {
     "vice_principal": [
         "jobs.view_jobrun",
         "jobs.run_validation",
+"jobs.run_check_missing_data",
         "journal_links.view_classsheetlink",
     ],
     "operator": [

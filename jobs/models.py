@@ -32,6 +32,7 @@ class JobRun(models.Model):
             ("run_validation", "Can run validation jobs"),
             ("run_full_pipeline", "Can run full pipeline"),
             ("send_reminders", "Can send validation reminders"),
+            ("run_check_missing_data", "Can run missing data checks"),
         ]
 
     def __str__(self) -> str:

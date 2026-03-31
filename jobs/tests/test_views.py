@@ -63,7 +63,7 @@ class JobRunDetailViewTests(TestCase):
 class RunFullPipelineViewTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="admin", password="p")
-        for codename in ("view_jobrun", "run_full_pipeline"):
+        for codename in ("view_jobrun", "run_full_pipeline", "run_check_missing_data"):
             self.user.user_permissions.add(Permission.objects.get(codename=codename))
         self.client.force_login(self.user)
     @patch("jobs.views.run_full_pipeline")
@@ -83,8 +83,18 @@ class RunFullPipelineViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Запустить полный пайплайн")
-        self.assertContains(response, "status-queued")
+        self.assertContains(response, "Проверить незаполненные (лог-чат)")
+        self.assertContains(response, "badge-queued")
         self.assertContains(response, "queued")
+
+    @patch("jobs.views.run_check_missing_data_job")
+    def test_post_runs_missing_data_check_and_redirects(self, mocked_runner):
+        fake_job = JobRun(id=uuid.uuid4())
+        mocked_runner.return_value = fake_job
+        response = self.client.post(reverse("run_missing_data_check"))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("job_run_detail", kwargs={"run_id": fake_job.id}))
+        mocked_runner.assert_called_once()
 
 class JobRunIssuesExportViewTests(TestCase):
     def setUp(self):
