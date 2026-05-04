@@ -1,6 +1,6 @@
 # Production Deployment Guide
 
-This guide describes a manual HTTP-only deployment for the Docker Compose production stack. It does not cover HTTPS, CI/CD, or server provisioning automation.
+This guide describes manual HTTP deployment and GitHub Actions SSH deployment for the Docker Compose production stack. It does not cover HTTPS or server provisioning automation.
 
 ## Server Preparation
 
@@ -125,3 +125,46 @@ docker compose --env-file .env.production -f docker-compose.prod.yml down
 ```
 
 Do not remove Docker volumes during a normal restart. Removing `postgres_data` deletes the production database.
+
+## GitHub Actions SSH Deploy
+
+The `Deploy` workflow is CD only. It does not configure HTTPS, does not overwrite `.env.production`, and does not create or upload server secrets. It runs pre-deploy Django checks and tests, then deploys over SSH only when those checks pass.
+
+Configure these GitHub repository secrets:
+
+| Name | Purpose |
+| --- | --- |
+| `DEPLOY_HOST` | SSH host for the production server. |
+| `DEPLOY_USER` | SSH user on the production server. |
+| `DEPLOY_SSH_KEY` | Private SSH key that can access the server. |
+| `DEPLOY_PORT` | Optional SSH port. Leave unset to use `22`. |
+
+Configure these GitHub repository variables:
+
+| Name | Current value |
+| --- | --- |
+| `DEPLOY_PATH` | `/opt/school_journal` |
+| `DEPLOY_COMPOSE_FILE` | `docker-compose.server.yml` |
+| `DEPLOY_HEALTH_URL` | `http://195.54.178.243:16472/healthz` |
+
+The server currently uses a local `docker-compose.server.yml` with `8082:80` because another reverse proxy already owns port `80`. The external forwarded URL is `http://195.54.178.243:16472/`.
+
+The deploy SSH user must be able to run `docker compose` on the server without an interactive password prompt. On Ubuntu this usually means adding the deploy user to the `docker` group and starting a new login session before running the workflow.
+
+Automatic deploy runs on `push` to `main`. To run it manually, open GitHub Actions, select `Deploy`, then choose `Run workflow` on `main`.
+
+During deploy, the workflow runs these server-side commands inside `DEPLOY_PATH`:
+
+```bash
+git fetch --all --prune
+git checkout main
+git pull --ff-only origin main
+docker compose -f "$DEPLOY_COMPOSE_FILE" pull || true
+docker compose -f "$DEPLOY_COMPOSE_FILE" up -d --build
+docker compose -f "$DEPLOY_COMPOSE_FILE" ps
+docker compose -f "$DEPLOY_COMPOSE_FILE" logs --tail=100 web
+```
+
+After SSH deploy, the workflow checks `DEPLOY_HEALTH_URL` with `curl -fsS`. A failed health check fails the workflow.
+
+Rollback is currently manual: SSH to the server, check out the previous known-good commit, and run `docker compose -f docker-compose.server.yml up -d --build`. Automated rollback is a future task.

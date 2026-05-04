@@ -28,6 +28,11 @@ Use this checklist before promoting the production Docker Compose stack.
 - [ ] HTTP smoke URL `/readyz` returns `ok`.
 - [ ] Runtime logs do not show migration, static collection, or startup errors.
 - [ ] GitHub Actions CI runs Django `manage.py check`, targeted tests, and tracked secrets/runtime guard.
+- [ ] GitHub Actions CD secrets and variables are configured.
+- [ ] GitHub Actions CD deploy user can run `docker compose` without an interactive password prompt.
+- [ ] GitHub Actions CD deploys over SSH only after pre-deploy checks pass.
+- [ ] GitHub Actions CD uses `docker-compose.server.yml` and does not overwrite `.env.production`.
+- [ ] GitHub Actions CD health check passes against the forwarded HTTP `/healthz` URL.
 - [ ] Future task: document and test PostgreSQL backup and restore.
 - [ ] Future task: add HTTPS/TLS configuration.
-- [ ] Future task: add CD deployment automation.
+- [ ] Future task: add automated rollback for CD.
