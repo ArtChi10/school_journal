@@ -4,10 +4,15 @@ import os
 from pathlib import Path
 from typing import Iterable
 
+from admin_panel.google_oauth import (
+    GOOGLE_OAUTH_UPLOAD_SCOPES,
+    get_google_oauth_client_secret_path,
+    get_google_oauth_token_path,
+)
 from jobs.models import JobLog, JobRun
 from jobs.services import log_step
 
-GOOGLE_UPLOAD_SCOPES = ["https://www.googleapis.com/auth/drive"]
+GOOGLE_UPLOAD_SCOPES = GOOGLE_OAUTH_UPLOAD_SCOPES
 
 
 class ReviewUploadError(RuntimeError):
@@ -81,8 +86,15 @@ def _build_drive_service():
     from googleapiclient.discovery import build
 
     if mode == "oauth_owner":
-        token_path = _require_env_path("GOOGLE_OAUTH_TOKEN_PATH")
-        _require_env_path("GOOGLE_OAUTH_CLIENT_SECRET_PATH")
+        token_path = get_google_oauth_token_path()
+        client_secret_path = get_google_oauth_client_secret_path()
+        if not token_path.exists():
+            raise ReviewUploadError("invalid_config", f"GOOGLE_OAUTH_TOKEN_PATH file does not exist: {token_path}")
+        if not client_secret_path.exists():
+            raise ReviewUploadError(
+                "invalid_config",
+                f"GOOGLE_OAUTH_CLIENT_SECRET_PATH file does not exist: {client_secret_path}",
+            )
 
         from google.auth.transport.requests import Request
         from google.oauth2.credentials import Credentials

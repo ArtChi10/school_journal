@@ -22,6 +22,8 @@
 
 См. полный перечень и дефолты в `.env.example`.
 
+Для закрытых Google Sheets используйте `GOOGLE_ACCESS_MODE=oauth_owner`, положите OAuth client secret в `creds/google/client_secret.json`, затем на странице `Классы и таблицы` нажмите `Подключить Google`. Redirect URI должен быть добавлен в Google Cloud OAuth client; локально это обычно `http://127.0.0.1:8000/links/google/oauth/callback/`.
+
 ## Healthcheck и мониторинг ошибок
 
 - `GET /healthz` — быстрый liveness-check, всегда отвечает `{"status":"ok"}` при работающем Django.
@@ -73,7 +75,7 @@ tail -n 100 logs/jobs_errors.log
 - `static_data` → `/app/staticfiles`
 - `media_data` → `/app/media`
 - `logs_data` → `/app/logs`
-- `./creds` (read-only) → `/app/creds`
+- `./creds` → `/app/creds` (OAuth callback writes `token.json` here)
 
 Быстрые проверки:
 ```bash

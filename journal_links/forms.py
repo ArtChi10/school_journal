@@ -25,6 +25,27 @@ class ClassSheetLinkForm(forms.ModelForm):
     def clean_class_code(self):
         return (self.cleaned_data.get("class_code") or "").strip()
 
+    def clean(self):
+        cleaned_data = super().clean()
+        class_code = (cleaned_data.get("class_code") or "").strip()
+        is_active = bool(cleaned_data.get("is_active"))
+
+        if class_code and is_active:
+            duplicate_links = ClassSheetLink.objects.filter(
+                class_code__iexact=class_code,
+                is_active=True,
+            )
+            if self.instance.pk:
+                duplicate_links = duplicate_links.exclude(pk=self.instance.pk)
+
+            if duplicate_links.exists():
+                raise forms.ValidationError(
+                    "Для этого класса уже есть активная ссылка на Google-таблицу. "
+                    "Отключите старую ссылку или отредактируйте существующую запись."
+                )
+
+        return cleaned_data
+
 
     def clean_google_sheet_url(self):
         url = (self.cleaned_data.get("google_sheet_url") or "").strip()

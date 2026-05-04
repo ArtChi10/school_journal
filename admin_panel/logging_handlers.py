@@ -6,10 +6,12 @@ class SafeStreamHandler(logging.StreamHandler):
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            super().emit(record)
+            message = self.format(record)
+            stream = self.stream
+            stream.write(message + self.terminator)
+            self.flush()
         except UnicodeEncodeError:
             try:
-                message = self.format(record)
                 stream = self.stream
                 encoding = getattr(stream, "encoding", None) or "utf-8"
                 safe_message = message.encode(encoding, errors="backslashreplace").decode(encoding, errors="ignore")
@@ -17,3 +19,7 @@ class SafeStreamHandler(logging.StreamHandler):
                 self.flush()
             except Exception:
                 self.handleError(record)
+        except RecursionError:
+            raise
+        except Exception:
+            self.handleError(record)

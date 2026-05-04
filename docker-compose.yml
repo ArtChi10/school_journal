@@ -11,8 +11,9 @@ services:
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-127.0.0.1,localhost}
       DJANGO_STATIC_ROOT: /app/staticfiles
       DJANGO_MEDIA_ROOT: /app/media
-      GOOGLE_OAUTH_CLIENT_SECRET_PATH: ${GOOGLE_OAUTH_CLIENT_SECRET_PATH:-/app/creds/client_secret.json}
-      GOOGLE_OAUTH_TOKEN_PATH: ${GOOGLE_OAUTH_TOKEN_PATH:-/app/creds/token.json}
+      GOOGLE_OAUTH_CLIENT_SECRET_PATH: ${GOOGLE_OAUTH_CLIENT_SECRET_PATH:-/app/creds/google/client_secret.json}
+      GOOGLE_OAUTH_TOKEN_PATH: ${GOOGLE_OAUTH_TOKEN_PATH:-/app/creds/google/token.json}
+      GOOGLE_OAUTH_REDIRECT_URI: ${GOOGLE_OAUTH_REDIRECT_URI:-}
       GOOGLE_SERVICE_ACCOUNT_JSON_PATH: ${GOOGLE_SERVICE_ACCOUNT_JSON_PATH:-/app/creds/service_account.json}
     ports:
       - "8000:8000"
@@ -20,7 +21,7 @@ services:
       - static_data:/app/staticfiles
       - media_data:/app/media
       - logs_data:/app/logs
-      - ./creds:/app/creds:ro
+      - ./creds:/app/creds
     healthcheck:
       test: [ "CMD", "python", "manage.py", "shell", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz').read()" ]
       interval: 30s

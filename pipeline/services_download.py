@@ -12,6 +12,11 @@ from urllib.request import urlopen
 
 from django.utils import timezone
 
+from admin_panel.google_oauth import (
+    GOOGLE_OAUTH_DOWNLOAD_SCOPES,
+    get_google_oauth_client_secret_path,
+    get_google_oauth_token_path,
+)
 from jobs.models import JobLog, JobRun
 from jobs.services import log_step
 from journal_links.models import ClassSheetLink
@@ -20,10 +25,6 @@ GOOGLE_ACCESS_MODE_PUBLIC = "public_link"
 GOOGLE_ACCESS_MODE_OAUTH_OWNER = "oauth_owner"
 GOOGLE_ACCESS_MODE_SERVICE_ACCOUNT = "service_account"
 GOOGLE_ACCESS_MODE_DEFAULT = GOOGLE_ACCESS_MODE_OAUTH_OWNER
-GOOGLE_OAUTH_SCOPES = [
-    "https://www.googleapis.com/auth/drive.readonly",
-    "https://www.googleapis.com/auth/spreadsheets.readonly",
-]
 _GOOGLE_SHEET_RE = re.compile(r"/spreadsheets/d/([a-zA-Z0-9-_]+)")
 
 
@@ -115,14 +116,21 @@ def _download_public_link(url: str) -> bytes:
 
 
 def _download_oauth_owner(url: str) -> bytes:
-    token_path = _require_env_path("GOOGLE_OAUTH_TOKEN_PATH")
-    _require_env_path("GOOGLE_OAUTH_CLIENT_SECRET_PATH")
+    token_path = get_google_oauth_token_path()
+    client_secret_path = get_google_oauth_client_secret_path()
+    if not token_path.exists():
+        raise DescriptorDownloadError("invalid_config", f"GOOGLE_OAUTH_TOKEN_PATH file does not exist: {token_path}")
+    if not client_secret_path.exists():
+        raise DescriptorDownloadError(
+            "invalid_config",
+            f"GOOGLE_OAUTH_CLIENT_SECRET_PATH file does not exist: {client_secret_path}",
+        )
 
     from google.auth.transport.requests import Request
     from google.auth.transport.requests import AuthorizedSession
     from google.oauth2.credentials import Credentials
 
-    creds = Credentials.from_authorized_user_file(str(token_path), GOOGLE_OAUTH_SCOPES)
+    creds = Credentials.from_authorized_user_file(str(token_path), GOOGLE_OAUTH_DOWNLOAD_SCOPES)
     if not creds.valid:
         if creds.expired and creds.refresh_token:
             creds.refresh(Request())

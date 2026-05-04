@@ -10,9 +10,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY school_journal-main/requirements.txt /tmp/legacy-requirements.txt
-COPY webapp/requirements.txt /tmp/requirements.txt
+COPY requirements.txt /tmp/admin-requirements.txt
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r /tmp/legacy-requirements.txt -r /tmp/requirements.txt
+    && pip install --no-cache-dir -r /tmp/legacy-requirements.txt -r /tmp/admin-requirements.txt \
+        Django==5.1.8 gunicorn==23.0.0 whitenoise==6.8.2
 
 RUN addgroup --system app && adduser --system --ingroup app app
 

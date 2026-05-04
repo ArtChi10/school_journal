@@ -1,6 +1,7 @@
 from django.test import TestCase
 
 from journal_links.forms import ClassSheetLinkForm
+from journal_links.models import ClassSheetLink
 
 
 class ClassSheetLinkFormTests(TestCase):
@@ -68,3 +69,38 @@ class ClassSheetLinkFormTests(TestCase):
         link = form.save()
         self.assertEqual(link.subject_name, "")
         self.assertEqual(link.teacher_name, "")
+
+    def test_rejects_second_active_link_for_same_class(self):
+        ClassSheetLink.objects.create(
+            class_code="5A",
+            google_sheet_url="https://docs.google.com/spreadsheets/d/existing/edit",
+            is_active=True,
+        )
+
+        form = ClassSheetLinkForm(
+            data={
+                "class_code": "5A",
+                "google_sheet_url": "https://docs.google.com/spreadsheets/d/newlink/edit",
+                "is_active": True,
+            }
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("уже есть активная ссылка", form.non_field_errors()[0])
+
+    def test_allows_new_active_link_when_old_one_is_inactive(self):
+        ClassSheetLink.objects.create(
+            class_code="5A",
+            google_sheet_url="https://docs.google.com/spreadsheets/d/existing/edit",
+            is_active=False,
+        )
+
+        form = ClassSheetLinkForm(
+            data={
+                "class_code": "5A",
+                "google_sheet_url": "https://docs.google.com/spreadsheets/d/newlink/edit",
+                "is_active": True,
+            }
+        )
+
+        self.assertTrue(form.is_valid())

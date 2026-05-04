@@ -35,3 +35,11 @@ class JournalLinkViewsTests(TestCase):
     def test_list_shows_missing_data_check_button_with_permission(self):
         response = self.client.get(reverse("journal_links:list_links"))
         self.assertContains(response, "Проверить незаполненные (лог-чат)")
+
+    def test_list_is_class_to_google_sheet_mapping(self):
+        response = self.client.get(reverse("journal_links:list_links"))
+
+        self.assertContains(response, "7B")
+        self.assertContains(response, "Google Sheet")
+        self.assertNotContains(response, "Science")
+        self.assertNotContains(response, "Teacher")

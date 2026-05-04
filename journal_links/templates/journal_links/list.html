@@ -3,6 +3,15 @@
 {% block page_heading %}Классы и таблицы{% endblock %}
 
 {% block page_actions %}
+  {% if perms.journal_links.change_classsheetlink %}
+    <form method="post" action="{% url 'journal_links:start_google_oauth' %}">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+      <button class="btn {% if google_oauth_status.is_ready %}btn-outline-success{% else %}btn-outline-primary{% endif %}" type="submit">
+        {% if google_oauth_status.is_ready %}Обновить Google-токен{% else %}Подключить Google{% endif %}
+      </button>
+    </form>
+  {% endif %}
  {% if perms.jobs.run_check_missing_data %}
     <form method="post" action="{% url 'journal_links:run_missing_data_check' %}">
       {% csrf_token %}
@@ -23,8 +32,6 @@
             <tr>
               <th>ID</th>
               <th>Класс</th>
-              <th>Предмет</th>
-              <th>Учитель</th>
               <th>Google Sheet</th>
               <th>Активна</th>
               <th>Обновлена</th>
@@ -36,8 +43,6 @@
               <tr>
                 <td>{{ link.id }}</td>
                 <td>{{ link.class_code }}</td>
-                <td>{{ link.subject_name }}</td>
-                <td>{{ link.teacher_name }}</td>
                 <td><a href="{{ link.google_sheet_url }}" target="_blank" rel="noopener" class="link-primary">Открыть</a></td>
                 <td>
                   {% if link.is_active %}
@@ -68,7 +73,7 @@
                 </td>
               </tr>
             {% empty %}
-              <tr><td class="table-empty" colspan="8">Ссылок пока нет.</td></tr>
+              <tr><td class="table-empty" colspan="6">Ссылок пока нет.</td></tr>
             {% endfor %}
           </tbody>
         </table>
