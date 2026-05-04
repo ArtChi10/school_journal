@@ -11,11 +11,13 @@ Use this checklist before promoting the production Docker Compose stack.
 - [ ] `DJANGO_ALLOWED_HOSTS` contains the server IP or HTTP host.
 - [ ] `DJANGO_CSRF_TRUSTED_ORIGINS` contains the HTTP origin.
 - [ ] PostgreSQL credentials in `.env.production` and `DATABASE_URL` match.
+- [ ] If server port `80` is already occupied, a server-local compose override maps the proxy to the forwarded HTTP port.
 - [ ] PostgreSQL `postgres_data` volume exists.
 - [ ] Static files volume exists.
 - [ ] Media volume exists.
 - [ ] Logs volume exists.
 - [ ] Credentials volume exists.
+- [ ] `docker-entrypoint.sh` is executable before building the production image.
 - [ ] `db` container is healthy.
 - [ ] `web` container is healthy.
 - [ ] `proxy` container is running.

@@ -63,6 +63,16 @@ Run Docker Compose with the explicit env file:
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
 
+If the server already has another reverse proxy bound to port `80`, use a server-local override file instead of editing the committed production compose file:
+
+```bash
+cp docker-compose.prod.yml docker-compose.server.yml
+sed -i 's/"80:80"/"8082:80"/' docker-compose.server.yml
+docker compose --env-file .env.production -f docker-compose.server.yml up -d --build
+```
+
+In that case, expose or forward the external HTTP port to the chosen server port and run smoke checks against that external port.
+
 The stack starts:
 
 - `db`: PostgreSQL with persistent `postgres_data`
@@ -86,6 +96,8 @@ Expected state:
 - `web` is healthy.
 - `proxy` is running.
 - No migration, static collection, or startup errors appear in `web` logs.
+
+If `web` fails with `exec: "/app/docker-entrypoint.sh": permission denied`, make sure `docker-entrypoint.sh` is executable in the git checkout, then rebuild the image.
 
 ## HTTP Smoke Check
 
