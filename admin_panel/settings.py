@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import importlib
+from urllib.parse import parse_qs, unquote, urlparse
 
 
 def load_dotenv(path: Path) -> None:
@@ -72,12 +73,65 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "admin_panel.wsgi.application"
 
-DATABASES = {
-    "default": {
+
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def database_from_url(database_url: str) -> dict:
+    parsed = urlparse(database_url)
+    scheme = parsed.scheme.lower()
+    if scheme in {"postgres", "postgresql"}:
+        config = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": unquote(parsed.path.lstrip("/")),
+            "USER": unquote(parsed.username or ""),
+            "PASSWORD": unquote(parsed.password or ""),
+            "HOST": parsed.hostname or "",
+            "PORT": str(parsed.port or ""),
+        }
+        query = parse_qs(parsed.query)
+        sslmode = (query.get("sslmode") or [""])[0]
+        if sslmode:
+            config["OPTIONS"] = {"sslmode": sslmode}
+        return config
+
+    if scheme == "sqlite":
+        db_path = unquote(parsed.path or "")
+        return {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": db_path or BASE_DIR / "db.sqlite3",
+        }
+
+    raise ValueError("DATABASE_URL supports only postgres/postgresql/sqlite schemes")
+
+
+def build_database_config() -> dict:
+    database_url = (os.getenv("DATABASE_URL") or "").strip()
+    if database_url:
+        return database_from_url(database_url)
+
+    postgres_host = (os.getenv("POSTGRES_HOST") or "").strip()
+    if postgres_host:
+        return {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.getenv("POSTGRES_DB", "school_journal"),
+            "USER": os.getenv("POSTGRES_USER", "school_journal"),
+            "PASSWORD": os.getenv("POSTGRES_PASSWORD", ""),
+            "HOST": postgres_host,
+            "PORT": os.getenv("POSTGRES_PORT", "5432"),
+        }
+
+    return {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "db.sqlite3",
     }
-}
+
+
+DATABASES = {"default": build_database_config()}
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -96,6 +150,14 @@ STATIC_ROOT = Path(os.getenv("DJANGO_STATIC_ROOT", BASE_DIR / "staticfiles"))
 MEDIA_URL = "/media/"
 MEDIA_ROOT = Path(os.getenv("DJANGO_MEDIA_ROOT", BASE_DIR / "media"))
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", False)
+SESSION_COOKIE_SECURE = env_bool("DJANGO_SESSION_COOKIE_SECURE", SECURE_SSL_REDIRECT)
+CSRF_COOKIE_SECURE = env_bool("DJANGO_CSRF_COOKIE_SECURE", SECURE_SSL_REDIRECT)
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
