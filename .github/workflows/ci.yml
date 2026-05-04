@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  django:
+    runs-on: ubuntu-latest
+    env:
+      DJANGO_SECRET_KEY: ci-secret-not-real
+      DJANGO_DEBUG: "False"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      ADMIN_LOG_CHAT_ID: ""
+      SENTRY_DSN: ""
+      TELEGRAM_BOT_TOKEN: ""
+      OPENAI_API_KEY: ""
+      GOOGLE_ACCESS_MODE: public_link
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Guard against tracked secrets and runtime files
+        shell: bash
+        run: |
+          python - <<'PY'
+          import subprocess
+          import sys
+
+          forbidden_exact = {
+              ".env",
+              ".env.production",
+              "db.sqlite3",
+              "local_notes/project_change_journal.md",
+          }
+
+          tracked = subprocess.check_output(["git", "ls-files"], text=True).splitlines()
+          violations = []
+          for path in tracked:
+              normalized = path.replace("\\", "/")
+              if normalized in forbidden_exact:
+                  violations.append(normalized)
+              if normalized.startswith("creds/") and normalized.endswith(".json"):
+                  violations.append(normalized)
+
+          if violations:
+              print("Forbidden secrets/runtime files are tracked:")
+              for path in sorted(set(violations)):
+                  print(f"- {path}")
+              sys.exit(1)
+
+          print("No forbidden secrets/runtime files are tracked.")
+          PY
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r school_journal-main/requirements.txt
+          pip install -r requirements.txt
+
+      - name: Django system check
+        run: python manage.py check
+
+      - name: Django tests
+        run: python manage.py test journal_links jobs pipeline validation notifications

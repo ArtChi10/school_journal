@@ -27,6 +27,7 @@ Use this checklist before promoting the production Docker Compose stack.
 - [ ] HTTP smoke URL `/healthz` returns `ok`.
 - [ ] HTTP smoke URL `/readyz` returns `ok`.
 - [ ] Runtime logs do not show migration, static collection, or startup errors.
+- [ ] GitHub Actions CI runs Django `manage.py check`, targeted tests, and tracked secrets/runtime guard.
 - [ ] Future task: document and test PostgreSQL backup and restore.
 - [ ] Future task: add HTTPS/TLS configuration.
-- [ ] Future task: add CI/CD deployment automation.
+- [ ] Future task: add CD deployment automation.

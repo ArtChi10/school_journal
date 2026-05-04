@@ -29,5 +29,7 @@ creds/**/*.json
 # Runtime logs
 logs/
 # Build/runtime artifacts
+db.sqlite3
 staticfiles/
 media/
+output/
