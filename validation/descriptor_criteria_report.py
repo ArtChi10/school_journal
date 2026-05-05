@@ -33,6 +33,11 @@ ALL_SUBJECTS_HEADERS = [
     "criteria_filled",
     "criteria_total",
     "criteria_missing",
+    "grades_ratio",
+    "grades_status",
+    "grades_filled",
+    "grades_total",
+    "grades_missing",
     "overall_status",
     "sheet_url",
 ]
@@ -45,6 +50,11 @@ PROBLEMS_HEADERS = [
     "criteria_filled",
     "criteria_total",
     "criteria_missing",
+    "grades_ratio",
+    "grades_status",
+    "grades_filled",
+    "grades_total",
+    "grades_missing",
     "overall_status",
     "sheet_url",
 ]

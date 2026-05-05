@@ -101,6 +101,53 @@ def _find_comment_col(ws, criteria_row: int, start_col: int, max_col: int) -> in
     return None
 
 
+def _find_student_name_header_row(ws, max_row: int) -> int | None:
+    for row_num in range(1, max_row + 1):
+        normalized = _normalize_text(_cell_value(ws, row_num, 1))
+        if normalized in {"имя", "name"}:
+            return row_num
+    return None
+
+
+def _student_rows(ws, name_header_row: int | None, max_row: int) -> list[int]:
+    if name_header_row is None:
+        return []
+
+    rows = []
+    for row_num in range(name_header_row + 1, max_row + 1):
+        if _is_empty(_cell_value(ws, row_num, 1)):
+            break
+        rows.append(row_num)
+    return rows
+
+
+def _grade_summary(ws, *, criteria_cols: list[int], student_rows: list[int]) -> dict:
+    if not criteria_cols or not student_rows:
+        return {
+            "grades_total": 0,
+            "grades_filled": 0,
+            "grades_missing": 0,
+            "grades_ratio": "—",
+            "grades_status": "not_applicable",
+        }
+
+    total = len(criteria_cols) * len(student_rows)
+    filled = 0
+    for row_num in student_rows:
+        for col_num in criteria_cols:
+            if not _is_empty(_cell_value(ws, row_num, col_num)):
+                filled += 1
+
+    missing = total - filled
+    return {
+        "grades_total": total,
+        "grades_filled": filled,
+        "grades_missing": missing,
+        "grades_ratio": f"{filled}/{total}",
+        "grades_status": "ok" if missing == 0 else "missing",
+    }
+
+
 def check_subject_sheet(ws, *, class_code: str, sheet_url: str) -> dict:
     max_row, max_col = _get_real_data_bounds(ws)
     class_anchor = _find_anchor(ws, "класс", "grade")
@@ -126,6 +173,7 @@ def check_subject_sheet(ws, *, class_code: str, sheet_url: str) -> dict:
     criteria_filled = 0
     criteria_missing = 0
     criteria_status = "not_found"
+    criteria_cols_with_text: list[int] = []
     if criteria_anchor is not None:
         criteria_row, criteria_col = criteria_anchor
         comment_col = _find_comment_col(ws, criteria_row, criteria_col + 1, max_col)
@@ -137,10 +185,15 @@ def check_subject_sheet(ws, *, class_code: str, sheet_url: str) -> dict:
                 criteria_missing += 1
             else:
                 criteria_filled += 1
+                criteria_cols_with_text.append(col_num)
         criteria_status = "filled" if criteria_total > 0 and criteria_missing == 0 else "missing"
 
+    name_header_row = _find_student_name_header_row(ws, max_row)
+    student_rows = _student_rows(ws, name_header_row, max_row)
+    grade_summary = _grade_summary(ws, criteria_cols=criteria_cols_with_text, student_rows=student_rows)
+
     overall_status = "ok"
-    if descriptor_status != "filled" or criteria_status != "filled":
+    if descriptor_status != "filled" or criteria_status != "filled" or grade_summary["grades_status"] == "missing":
         overall_status = "problem"
 
     return {
@@ -154,6 +207,12 @@ def check_subject_sheet(ws, *, class_code: str, sheet_url: str) -> dict:
         "criteria_total": criteria_total,
         "criteria_filled": criteria_filled,
         "criteria_missing": criteria_missing,
+        "students_total": len(student_rows),
+        "grades_total": grade_summary["grades_total"],
+        "grades_filled": grade_summary["grades_filled"],
+        "grades_missing": grade_summary["grades_missing"],
+        "grades_ratio": grade_summary["grades_ratio"],
+        "grades_status": grade_summary["grades_status"],
         "overall_status": overall_status,
         "sheet_url": sheet_url,
         "sheet_name": ws.title,
@@ -182,6 +241,31 @@ def check_workbook_descriptor_criteria(path: str, *, class_code: str, sheet_url:
 
             row = check_subject_sheet(ws, class_code=class_code, sheet_url=sheet_url)
             rows.append(row)
+            sheet_events.extend(
+                [
+                    {
+                        "event": "students_found",
+                        "sheet_name": sheet_name,
+                        "students_total": row["students_total"],
+                    },
+                    {
+                        "event": "filled_criteria_found",
+                        "sheet_name": sheet_name,
+                        "criteria_filled": row["criteria_filled"],
+                    },
+                    {
+                        "event": "grades_checked",
+                        "sheet_name": sheet_name,
+                        "grades_total": row["grades_total"],
+                        "grades_filled": row["grades_filled"],
+                    },
+                    {
+                        "event": "missing_grades_found",
+                        "sheet_name": sheet_name,
+                        "grades_missing": row["grades_missing"],
+                    },
+                ]
+            )
             sheet_events.append(
                 {
                     "event": "sheet_checked",
@@ -378,6 +462,55 @@ def run_descriptor_criteria_fill_check_job(
                                 "class_code": link.class_code,
                                 "sheet_name": event["sheet_name"],
                                 "overall_status": event["overall_status"],
+                            },
+                        )
+                    elif event["event"] == "students_found":
+                        log_step(
+                            job_run=job_run,
+                            level=JobLog.Level.INFO,
+                            message="Students found",
+                            context={
+                                "link_id": link.id,
+                                "class_code": link.class_code,
+                                "sheet_name": event["sheet_name"],
+                                "students_total": event["students_total"],
+                            },
+                        )
+                    elif event["event"] == "filled_criteria_found":
+                        log_step(
+                            job_run=job_run,
+                            level=JobLog.Level.INFO,
+                            message="Filled criteria found",
+                            context={
+                                "link_id": link.id,
+                                "class_code": link.class_code,
+                                "sheet_name": event["sheet_name"],
+                                "criteria_filled": event["criteria_filled"],
+                            },
+                        )
+                    elif event["event"] == "grades_checked":
+                        log_step(
+                            job_run=job_run,
+                            level=JobLog.Level.INFO,
+                            message="Grades checked",
+                            context={
+                                "link_id": link.id,
+                                "class_code": link.class_code,
+                                "sheet_name": event["sheet_name"],
+                                "grades_total": event["grades_total"],
+                                "grades_filled": event["grades_filled"],
+                            },
+                        )
+                    elif event["event"] == "missing_grades_found":
+                        log_step(
+                            job_run=job_run,
+                            level=JobLog.Level.INFO,
+                            message="Missing grades found",
+                            context={
+                                "link_id": link.id,
+                                "class_code": link.class_code,
+                                "sheet_name": event["sheet_name"],
+                                "grades_missing": event["grades_missing"],
                             },
                         )
 

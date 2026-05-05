@@ -48,6 +48,38 @@ def _build_descriptor_criteria_workbook(path: Path) -> None:
     wb.save(path)
 
 
+def _build_grade_completeness_workbook(path: Path, *, missing_cells: set[tuple[int, int]] | None = None) -> None:
+    missing_cells = missing_cells or set()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Math"
+    ws.cell(row=1, column=2, value="Класс | Grade")
+    ws.cell(row=1, column=3, value="7A")
+    ws.cell(row=2, column=2, value="Учитель | Teacher")
+    ws.cell(row=2, column=3, value="Teacher A")
+    ws.cell(row=3, column=2, value="Модуль | Module")
+    ws.cell(row=3, column=3, value="1")
+    ws.cell(row=4, column=2, value="Дескриптор | Descriptor")
+    ws.cell(row=4, column=3, value="Descriptor")
+    ws.cell(row=6, column=2, value="Критерии оценивания | Assessment criteria")
+    ws.cell(row=6, column=3, value="Criterion 1")
+    ws.cell(row=6, column=4, value="Criterion 2")
+    ws.cell(row=6, column=5, value="Criterion 3")
+    ws.cell(row=6, column=6, value="")
+    ws.cell(row=6, column=7, value="Комментарий")
+    ws.cell(row=8, column=1, value="Имя")
+    ws.cell(row=8, column=2, value="Фамилия")
+    ws.cell(row=9, column=1, value="Ada")
+    ws.cell(row=9, column=2, value="Lovelace")
+    ws.cell(row=10, column=1, value="Grace")
+    ws.cell(row=10, column=2, value="Hopper")
+    for row_num in (9, 10):
+        for col_num in (3, 4, 5):
+            if (row_num, col_num) not in missing_cells:
+                ws.cell(row=row_num, column=col_num, value=5)
+    wb.save(path)
+
+
 class DescriptorCriteriaFillWorkbookTests(TestCase):
     def test_checks_subject_sheets_and_skips_tutor_service(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -102,6 +134,97 @@ class DescriptorCriteriaFillWorkbookTests(TestCase):
         self.assertEqual(result["rows"][0]["criteria_missing"], 0)
         self.assertEqual(result["rows"][0]["overall_status"], "ok")
 
+    def test_counts_filled_grades_for_student_criteria_intersections(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = Path(tmpdir) / "grades_filled.xlsx"
+            _build_grade_completeness_workbook(workbook_path)
+
+            result = check_workbook_descriptor_criteria(
+                str(workbook_path),
+                class_code="7A",
+                sheet_url="https://docs.google.com/spreadsheets/d/abc123/edit",
+            )
+
+        row = result["rows"][0]
+        self.assertEqual(row["students_total"], 2)
+        self.assertEqual(row["criteria_filled"], 3)
+        self.assertEqual(row["criteria_total"], 4)
+        self.assertEqual(row["grades_total"], 6)
+        self.assertEqual(row["grades_filled"], 6)
+        self.assertEqual(row["grades_missing"], 0)
+        self.assertEqual(row["grades_ratio"], "6/6")
+        self.assertEqual(row["grades_status"], "ok")
+        self.assertEqual(row["overall_status"], "problem")
+
+    def test_missing_grade_cells_make_subject_problem(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = Path(tmpdir) / "grades_missing.xlsx"
+            _build_grade_completeness_workbook(workbook_path, missing_cells={(9, 4), (10, 5)})
+
+            result = check_workbook_descriptor_criteria(
+                str(workbook_path),
+                class_code="7A",
+                sheet_url="https://docs.google.com/spreadsheets/d/abc123/edit",
+            )
+
+        row = result["rows"][0]
+        self.assertEqual(row["grades_total"], 6)
+        self.assertEqual(row["grades_filled"], 4)
+        self.assertEqual(row["grades_missing"], 2)
+        self.assertEqual(row["grades_ratio"], "4/6")
+        self.assertEqual(row["grades_status"], "missing")
+        self.assertEqual(row["overall_status"], "problem")
+
+    def test_missing_student_header_makes_grades_not_applicable(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = Path(tmpdir) / "no_students.xlsx"
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Math"
+            ws.cell(row=4, column=2, value="Дескриптор | Descriptor")
+            ws.cell(row=4, column=3, value="Descriptor")
+            ws.cell(row=6, column=2, value="Критерии оценивания | Assessment criteria")
+            ws.cell(row=6, column=3, value="Criterion 1")
+            ws.cell(row=6, column=4, value="Комментарий")
+            wb.save(workbook_path)
+
+            result = check_workbook_descriptor_criteria(
+                str(workbook_path),
+                class_code="7A",
+                sheet_url="https://docs.google.com/spreadsheets/d/abc123/edit",
+            )
+
+        row = result["rows"][0]
+        self.assertEqual(row["grades_total"], 0)
+        self.assertEqual(row["grades_ratio"], "—")
+        self.assertEqual(row["grades_status"], "not_applicable")
+
+    def test_no_filled_criteria_makes_grades_not_applicable(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = Path(tmpdir) / "no_filled_criteria.xlsx"
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Math"
+            ws.cell(row=4, column=2, value="Дескриптор | Descriptor")
+            ws.cell(row=4, column=3, value="Descriptor")
+            ws.cell(row=6, column=2, value="Критерии оценивания | Assessment criteria")
+            ws.cell(row=6, column=3, value="")
+            ws.cell(row=6, column=4, value="Комментарий")
+            ws.cell(row=8, column=1, value="Имя")
+            ws.cell(row=9, column=1, value="Ada")
+            wb.save(workbook_path)
+
+            result = check_workbook_descriptor_criteria(
+                str(workbook_path),
+                class_code="7A",
+                sheet_url="https://docs.google.com/spreadsheets/d/abc123/edit",
+            )
+
+        row = result["rows"][0]
+        self.assertEqual(row["criteria_filled"], 0)
+        self.assertEqual(row["grades_total"], 0)
+        self.assertEqual(row["grades_status"], "not_applicable")
+
 
 class DescriptorCriteriaFillJobTests(TestCase):
     @classmethod
@@ -138,6 +261,10 @@ class DescriptorCriteriaFillJobTests(TestCase):
         self.assertEqual(len(job_run.result_json["rows"]), 1)
         self.assertTrue(job_run.logs.filter(message="Class check started").exists())
         self.assertTrue(job_run.logs.filter(message="Workbook downloaded").exists())
+        self.assertTrue(job_run.logs.filter(message="Students found").exists())
+        self.assertTrue(job_run.logs.filter(message="Filled criteria found").exists())
+        self.assertTrue(job_run.logs.filter(message="Grades checked").exists())
+        self.assertTrue(job_run.logs.filter(message="Missing grades found").exists())
         self.assertTrue(job_run.logs.filter(message="Sheet checked").exists())
         self.assertTrue(job_run.logs.filter(message="Problems found").exists())
         self.assertTrue(job_run.logs.filter(message="Descriptor/criteria fill check finished").exists())
@@ -228,6 +355,11 @@ class DescriptorCriteriaFillViewTests(TestCase):
                         "criteria_total": 2,
                         "criteria_filled": 2,
                         "criteria_missing": 0,
+                        "grades_total": 2,
+                        "grades_filled": 2,
+                        "grades_missing": 0,
+                        "grades_ratio": "2/2",
+                        "grades_status": "ok",
                         "overall_status": "ok",
                         "sheet_url": "https://docs.google.com/spreadsheets/d/abc123/edit",
                     }
@@ -247,3 +379,5 @@ class DescriptorCriteriaFillViewTests(TestCase):
         self.assertContains(response, "Math")
         self.assertContains(response, "Teacher A")
         self.assertContains(response, "2 / 2")
+        self.assertContains(response, "Оценки")
+        self.assertContains(response, "2/2")

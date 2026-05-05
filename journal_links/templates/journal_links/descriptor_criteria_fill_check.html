@@ -144,6 +144,7 @@
                 <th>Модуль</th>
                 <th>Дескриптор</th>
                 <th>Критерии</th>
+                <th>Оценки</th>
                 <th>Статус</th>
                 <th>Таблица</th>
               </tr>
@@ -166,6 +167,13 @@
                   </td>
                   <td>{{ row.criteria_filled }} / {{ row.criteria_total }}{% if row.criteria_missing %} · нет {{ row.criteria_missing }}{% endif %}</td>
                   <td>
+                    {% if row.grades_status == "not_applicable" %}
+                      —
+                    {% else %}
+                      {{ row.grades_ratio|default:"—" }}{% if row.grades_missing %} · нет {{ row.grades_missing }}{% endif %}
+                    {% endif %}
+                  </td>
+                  <td>
                     {% if row.overall_status == "ok" %}
                       <span class="badge badge-soft text-bg-success">OK</span>
                     {% else %}
@@ -175,7 +183,7 @@
                   <td><a href="{{ row.sheet_url }}" target="_blank" rel="noopener">Открыть</a></td>
                 </tr>
               {% empty %}
-                <tr><td class="table-empty" colspan="8">Нет строк для выбранных фильтров.</td></tr>
+                <tr><td class="table-empty" colspan="9">Нет строк для выбранных фильтров.</td></tr>
               {% endfor %}
             </tbody>
           </table>

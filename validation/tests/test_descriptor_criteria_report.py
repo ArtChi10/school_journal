@@ -45,6 +45,11 @@ def _job_run_with_rows(*, status=JobRun.Status.SUCCESS) -> JobRun:
                     "criteria_filled": 2,
                     "criteria_total": 2,
                     "criteria_missing": 0,
+                    "grades_ratio": "6/6",
+                    "grades_status": "ok",
+                    "grades_filled": 6,
+                    "grades_total": 6,
+                    "grades_missing": 0,
                     "overall_status": "ok",
                     "sheet_url": "https://docs.google.com/spreadsheets/d/source/edit",
                 },
@@ -58,6 +63,11 @@ def _job_run_with_rows(*, status=JobRun.Status.SUCCESS) -> JobRun:
                     "criteria_filled": 1,
                     "criteria_total": 2,
                     "criteria_missing": 1,
+                    "grades_ratio": "4/6",
+                    "grades_status": "missing",
+                    "grades_filled": 4,
+                    "grades_total": 6,
+                    "grades_missing": 2,
                     "overall_status": "problem",
                     "sheet_url": "https://docs.google.com/spreadsheets/d/source/edit",
                 },
@@ -87,7 +97,10 @@ class DescriptorCriteriaReportPayloadTests(TestCase):
 
         problems = next(item for item in payload if item["title"] == PROBLEMS_SHEET)
         self.assertEqual(len(problems["values"]), 2)
+        self.assertIn("grades_ratio", problems["values"][0])
+        self.assertIn("grades_status", problems["values"][0])
         self.assertIn("Science", problems["values"][1])
+        self.assertIn("4/6", problems["values"][1])
 
 
 class DescriptorCriteriaReportUpdateTests(TestCase):
