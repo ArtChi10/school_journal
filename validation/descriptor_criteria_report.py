@@ -94,6 +94,15 @@ def _overall_status_label(value: Any) -> str:
     }.get(str(value or "").strip().lower(), str(value or "").strip())
 
 
+def _hyperlink_formula(url: Any, label: str = "Открыть") -> str:
+    clean_url = str(url or "").strip()
+    if not clean_url:
+        return ""
+    escaped_url = clean_url.replace('"', '""')
+    escaped_label = label.replace('"', '""')
+    return f'=HYPERLINK("{escaped_url}","{escaped_label}")'
+
+
 def _job_status_label(value: Any) -> str:
     return {
         "pending": "Ожидает",
@@ -114,6 +123,8 @@ def _report_value(row: dict, key: str) -> Any:
         return _grades_status_label(value)
     if key == "overall_status":
         return _overall_status_label(value)
+    if key == "sheet_url":
+        return _hyperlink_formula(value)
     return _safe_value(value)
 
 
@@ -395,7 +406,7 @@ def _write_payload(service, spreadsheet_id: str, payload: list[dict[str, Any]]) 
     if data_to_update:
         service.spreadsheets().values().batchUpdate(
             spreadsheetId=spreadsheet_id,
-            body={"valueInputOption": "RAW", "data": data_to_update},
+            body={"valueInputOption": "USER_ENTERED", "data": data_to_update},
         ).execute()
     _apply_report_formatting(service, spreadsheet_id, payload, title_to_id)
 

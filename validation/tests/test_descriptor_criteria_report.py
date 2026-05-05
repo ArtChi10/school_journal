@@ -112,6 +112,7 @@ class DescriptorCriteriaReportPayloadTests(TestCase):
         self.assertIn("Science", problems["values"][1])
         self.assertIn("Не заполнены", problems["values"][1])
         self.assertNotIn("4/6", problems["values"][1])
+        self.assertIn('=HYPERLINK("https://docs.google.com/spreadsheets/d/source/edit","Открыть")', problems["values"][1])
 
 
 class DescriptorCriteriaReportFormattingTests(TestCase):
@@ -196,6 +197,7 @@ class DescriptorCriteriaReportFormattingTests(TestCase):
         values_service.clear.assert_not_called()
         values_service.update.assert_not_called()
         self.assertEqual(values_service.batchClear.call_args.kwargs["body"]["ranges"], ["'All subjects'!A:Z"])
+        self.assertEqual(values_service.batchUpdate.call_args.kwargs["body"]["valueInputOption"], "USER_ENTERED")
         self.assertEqual(values_service.batchUpdate.call_args.kwargs["body"]["data"][0]["range"], "'All subjects'!A1")
         spreadsheets.batchUpdate.assert_called_once()
         body = spreadsheets.batchUpdate.call_args.kwargs["body"]

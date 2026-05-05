@@ -36,6 +36,8 @@ The report is designed for assistant principals and uses Russian column headers:
 
 Counts of criteria and grades remain in `JobRun.result_json`, but the Google report shows only whether descriptors, criteria, and grades are filled. Grades are checked only for filled criteria columns. A criteria cell is not considered filled when it is empty or contains only a number such as `1`, `2`, or `3`.
 
+The `Ссылка на таблицу` column is written as a Google Sheets `HYPERLINK` formula with the label `Открыть`, so assistant principals can open the source class spreadsheet directly from the report.
+
 After values are written, the report applies cell formatting automatically. Header rows are bold, frozen, and lightly shaded. Status and missing-count cells use:
 
 - green for filled / ok / zero missing;
