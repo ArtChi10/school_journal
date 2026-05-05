@@ -94,7 +94,7 @@ def _download_workbook_oauth_owner(link: ClassSheetLink) -> Path:
     from google.auth.transport.requests import AuthorizedSession
     from google.oauth2.credentials import Credentials
 
-    creds = Credentials.from_authorized_user_file(str(token_path), GOOGLE_OAUTH_SCOPES)
+    creds = Credentials.from_authorized_user_file(str(token_path))
     if not creds.valid:
         if creds.expired and creds.refresh_token:
             creds.refresh(Request())

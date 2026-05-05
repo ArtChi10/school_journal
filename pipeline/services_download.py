@@ -130,7 +130,7 @@ def _download_oauth_owner(url: str) -> bytes:
     from google.auth.transport.requests import AuthorizedSession
     from google.oauth2.credentials import Credentials
 
-    creds = Credentials.from_authorized_user_file(str(token_path), GOOGLE_OAUTH_DOWNLOAD_SCOPES)
+    creds = Credentials.from_authorized_user_file(str(token_path))
     if not creds.valid:
         if creds.expired and creds.refresh_token:
             creds.refresh(Request())
@@ -155,7 +155,7 @@ def _download_service_account(url: str) -> bytes:
     from google.auth.transport.requests import AuthorizedSession
     from google.oauth2 import service_account
 
-    creds = service_account.Credentials.from_service_account_file(str(creds_path), scopes=GOOGLE_OAUTH_SCOPES)
+    creds = service_account.Credentials.from_service_account_file(str(creds_path), scopes=GOOGLE_OAUTH_DOWNLOAD_SCOPES)
 
     export_url = _build_export_url(url)
     session = AuthorizedSession(creds)
