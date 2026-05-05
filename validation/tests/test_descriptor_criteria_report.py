@@ -7,11 +7,18 @@ from jobs.models import JobLog, JobRun
 from journal_links.models import DescriptorCriteriaReportTarget
 from validation.descriptor_criteria_report import (
     ALL_SUBJECTS_SHEET,
+    ALL_SUBJECTS_HEADERS,
+    COLOR_GRAY,
+    COLOR_GREEN,
+    COLOR_RED,
+    COLOR_YELLOW,
     PROBLEMS_SHEET,
     SUMMARY_SHEET,
     build_descriptor_criteria_report_payload,
     extract_spreadsheet_id,
     update_descriptor_criteria_google_report,
+    _format_requests_for_values,
+    _write_payload,
 )
 
 
@@ -101,6 +108,101 @@ class DescriptorCriteriaReportPayloadTests(TestCase):
         self.assertIn("grades_status", problems["values"][0])
         self.assertIn("Science", problems["values"][1])
         self.assertIn("4/6", problems["values"][1])
+
+
+class DescriptorCriteriaReportFormattingTests(TestCase):
+    def _subject_row(self, **overrides):
+        row = {
+            "class_code": "7A",
+            "subject_name": "Math",
+            "teacher_name": "Teacher A",
+            "module_number": 1,
+            "descriptor_status": "filled",
+            "criteria_status": "filled",
+            "criteria_filled": 2,
+            "criteria_total": 2,
+            "criteria_missing": 0,
+            "grades_ratio": "6/6",
+            "grades_status": "ok",
+            "grades_filled": 6,
+            "grades_total": 6,
+            "grades_missing": 0,
+            "overall_status": "ok",
+            "sheet_url": "https://docs.google.com/spreadsheets/d/source/edit",
+        }
+        row.update(overrides)
+        return [row.get(header, "") for header in ALL_SUBJECTS_HEADERS]
+
+    def _cell_colors(self, requests):
+        colors = {}
+        for request in requests:
+            repeat_cell = request.get("repeatCell")
+            if not repeat_cell:
+                continue
+            request_range = repeat_cell["range"]
+            if request_range["endRowIndex"] - request_range["startRowIndex"] != 1:
+                continue
+            if request_range["endColumnIndex"] - request_range["startColumnIndex"] != 1:
+                continue
+            color = repeat_cell["cell"]["userEnteredFormat"].get("backgroundColor")
+            colors[(request_range["startRowIndex"], request_range["startColumnIndex"])] = color
+        return colors
+
+    def test_builds_status_and_header_format_requests(self):
+        values = [
+            ALL_SUBJECTS_HEADERS,
+            self._subject_row(),
+            self._subject_row(
+                descriptor_status="missing",
+                criteria_status="missing",
+                criteria_missing=1,
+                grades_ratio="4/6",
+                grades_status="missing",
+                grades_missing=2,
+                overall_status="problem",
+            ),
+            self._subject_row(grades_ratio="—", grades_status="not_applicable", grades_missing=0),
+        ]
+
+        requests = _format_requests_for_values(123, values)
+        colors = self._cell_colors(requests)
+        header_requests = [
+            request
+            for request in requests
+            if request.get("repeatCell", {}).get("range", {}).get("startRowIndex") == 0
+            and request.get("repeatCell", {}).get("range", {}).get("endRowIndex") == 1
+        ]
+
+        self.assertTrue(any("updateSheetProperties" in request for request in requests))
+        self.assertTrue(any("autoResizeDimensions" in request for request in requests))
+        self.assertTrue(any(request["repeatCell"]["cell"]["userEnteredFormat"]["textFormat"]["bold"] is True for request in header_requests))
+        self.assertIn(COLOR_GREEN, [request["repeatCell"]["cell"]["userEnteredFormat"]["backgroundColor"] for request in requests if "repeatCell" in request])
+        self.assertEqual(colors[(1, ALL_SUBJECTS_HEADERS.index("descriptor_status"))], COLOR_GREEN)
+        self.assertEqual(colors[(2, ALL_SUBJECTS_HEADERS.index("overall_status"))], COLOR_RED)
+        self.assertEqual(colors[(2, ALL_SUBJECTS_HEADERS.index("grades_status"))], COLOR_YELLOW)
+        self.assertEqual(colors[(2, ALL_SUBJECTS_HEADERS.index("grades_ratio"))], COLOR_YELLOW)
+        self.assertEqual(colors[(2, ALL_SUBJECTS_HEADERS.index("grades_missing"))], COLOR_YELLOW)
+        self.assertEqual(colors[(3, ALL_SUBJECTS_HEADERS.index("grades_status"))], COLOR_GRAY)
+
+    def test_write_payload_applies_formatting_after_values(self):
+        service = Mock()
+        spreadsheets = service.spreadsheets.return_value
+        spreadsheets.get.return_value.execute.return_value = {
+            "sheets": [{"properties": {"title": ALL_SUBJECTS_SHEET, "sheetId": 123}}]
+        }
+        spreadsheets.batchUpdate.return_value.execute.return_value = {}
+        values_service = spreadsheets.values.return_value
+        values_service.clear.return_value.execute.return_value = {}
+        values_service.update.return_value.execute.return_value = {}
+        payload = [{"title": ALL_SUBJECTS_SHEET, "values": [ALL_SUBJECTS_HEADERS, self._subject_row(overall_status="problem")]}]
+
+        _write_payload(service, "spreadsheet123", payload)
+
+        values_service.clear.assert_called_once()
+        values_service.update.assert_called_once()
+        spreadsheets.batchUpdate.assert_called_once()
+        body = spreadsheets.batchUpdate.call_args.kwargs["body"]
+        self.assertTrue(body["requests"])
 
 
 class DescriptorCriteriaReportUpdateTests(TestCase):

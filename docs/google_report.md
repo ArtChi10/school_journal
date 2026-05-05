@@ -24,6 +24,12 @@ The `Problems` sheet contains only subject rows where `overall_status != ok`. Th
 
 Each subject row includes grade completeness fields. Grades are checked only for filled criteria columns. A criteria cell is not considered filled when it is empty or contains only a number such as `1`, `2`, or `3`. For every student row found below the `Имя` header, the checker expects a non-empty cell at the student x filled-criterion intersection. The main human-readable field is `grades_ratio`, for example `4/6`.
 
+After values are written, the report applies cell formatting automatically. Header rows are bold, frozen, and lightly shaded. Status and missing-count cells use:
+
+- green for filled / ok / zero missing;
+- yellow or red for missing values and problem statuses;
+- gray for not-applicable grade checks.
+
 ## OAuth Scope
 
 Report export needs write access to Google Sheets. The OAuth token must include:

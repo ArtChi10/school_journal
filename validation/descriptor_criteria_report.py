@@ -23,6 +23,12 @@ SUMMARY_SHEET = "Summary"
 PROBLEMS_SHEET = "Problems"
 ALL_SUBJECTS_SHEET = "All subjects"
 
+COLOR_GREEN = {"red": 0.85, "green": 0.94, "blue": 0.85}
+COLOR_YELLOW = {"red": 1.0, "green": 0.95, "blue": 0.8}
+COLOR_RED = {"red": 0.98, "green": 0.8, "blue": 0.8}
+COLOR_GRAY = {"red": 0.9, "green": 0.9, "blue": 0.9}
+COLOR_HEADER = {"red": 0.93, "green": 0.94, "blue": 0.96}
+
 ALL_SUBJECTS_HEADERS = [
     "class_code",
     "subject_name",
@@ -47,6 +53,7 @@ PROBLEMS_HEADERS = [
     "teacher_name",
     "module_number",
     "descriptor_status",
+    "criteria_status",
     "criteria_filled",
     "criteria_total",
     "criteria_missing",
@@ -202,17 +209,156 @@ def _quote_sheet_name(title: str) -> str:
     return "'" + title.replace("'", "''") + "'"
 
 
-def _ensure_sheets(service, spreadsheet_id: str, titles: list[str]) -> None:
-    metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id, fields="sheets(properties(title))").execute()
-    existing_titles = {sheet["properties"]["title"] for sheet in metadata.get("sheets", [])}
+def _sheet_metadata(service, spreadsheet_id: str) -> dict[str, int]:
+    metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id, fields="sheets(properties(sheetId,title))").execute()
+    return {sheet["properties"]["title"]: sheet["properties"].get("sheetId") for sheet in metadata.get("sheets", [])}
+
+
+def _ensure_sheets(service, spreadsheet_id: str, titles: list[str]) -> dict[str, int]:
+    title_to_id = _sheet_metadata(service, spreadsheet_id)
+    existing_titles = set(title_to_id)
     requests = [{"addSheet": {"properties": {"title": title}}} for title in titles if title not in existing_titles]
+    if requests:
+        service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={"requests": requests}).execute()
+        title_to_id = _sheet_metadata(service, spreadsheet_id)
+    return title_to_id
+
+
+def _background_color_request(sheet_id: int, row_index: int, column_index: int, color: dict[str, float]) -> dict[str, Any]:
+    return {
+        "repeatCell": {
+            "range": {
+                "sheetId": sheet_id,
+                "startRowIndex": row_index,
+                "endRowIndex": row_index + 1,
+                "startColumnIndex": column_index,
+                "endColumnIndex": column_index + 1,
+            },
+            "cell": {"userEnteredFormat": {"backgroundColor": color}},
+            "fields": "userEnteredFormat.backgroundColor",
+        }
+    }
+
+
+def _header_format_requests(sheet_id: int, column_count: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 0,
+                    "endRowIndex": 1000,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": max(column_count, 1),
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "backgroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0},
+                        "textFormat": {"bold": False},
+                    }
+                },
+                "fields": "userEnteredFormat(backgroundColor,textFormat)",
+            }
+        },
+        {
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 0,
+                    "endRowIndex": 1,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": max(column_count, 1),
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "backgroundColor": COLOR_HEADER,
+                        "textFormat": {"bold": True},
+                    }
+                },
+                "fields": "userEnteredFormat(backgroundColor,textFormat)",
+            }
+        },
+        {
+            "updateSheetProperties": {
+                "properties": {"sheetId": sheet_id, "gridProperties": {"frozenRowCount": 1}},
+                "fields": "gridProperties.frozenRowCount",
+            }
+        },
+        {
+            "autoResizeDimensions": {
+                "dimensions": {
+                    "sheetId": sheet_id,
+                    "dimension": "COLUMNS",
+                    "startIndex": 0,
+                    "endIndex": max(column_count, 1),
+                }
+            }
+        },
+    ]
+
+
+def _status_color(header: str, value: Any, row: dict[str, Any]) -> dict[str, float] | None:
+    normalized_value = str(value or "").strip().lower()
+    if header == "descriptor_status":
+        return {"filled": COLOR_GREEN, "missing": COLOR_YELLOW, "not_found": COLOR_RED}.get(normalized_value)
+    if header == "criteria_status":
+        return {"filled": COLOR_GREEN, "missing": COLOR_YELLOW, "not_found": COLOR_RED}.get(normalized_value)
+    if header == "grades_status":
+        return {"ok": COLOR_GREEN, "missing": COLOR_YELLOW, "not_applicable": COLOR_GRAY}.get(normalized_value)
+    if header == "overall_status":
+        return {"ok": COLOR_GREEN, "problem": COLOR_RED}.get(normalized_value)
+    if header in {"criteria_missing", "grades_missing"}:
+        try:
+            count = int(value or 0)
+        except (TypeError, ValueError):
+            return None
+        return COLOR_GREEN if count == 0 else COLOR_YELLOW
+    if header == "grades_ratio":
+        return _status_color("grades_status", row.get("grades_status"), row)
+    return None
+
+
+def _format_requests_for_values(sheet_id: int, values: list[list[Any]]) -> list[dict[str, Any]]:
+    if not values:
+        return []
+
+    headers = [str(header) for header in values[0]]
+    requests = _header_format_requests(sheet_id, len(headers))
+    headers_to_format = {
+        "descriptor_status",
+        "criteria_status",
+        "criteria_missing",
+        "grades_ratio",
+        "grades_status",
+        "grades_missing",
+        "overall_status",
+    }
+    for row_index, row_values in enumerate(values[1:], start=1):
+        row = {header: row_values[index] if index < len(row_values) else "" for index, header in enumerate(headers)}
+        for column_index, header in enumerate(headers):
+            if header not in headers_to_format:
+                continue
+            value = row_values[column_index] if column_index < len(row_values) else ""
+            color = _status_color(header, value, row)
+            if color:
+                requests.append(_background_color_request(sheet_id, row_index, column_index, color))
+    return requests
+
+
+def _apply_report_formatting(service, spreadsheet_id: str, payload: list[dict[str, Any]], title_to_id: dict[str, int]) -> None:
+    requests: list[dict[str, Any]] = []
+    for item in payload:
+        sheet_id = title_to_id.get(item["title"])
+        if sheet_id is None:
+            continue
+        requests.extend(_format_requests_for_values(sheet_id, item["values"]))
     if requests:
         service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={"requests": requests}).execute()
 
 
 def _write_payload(service, spreadsheet_id: str, payload: list[dict[str, Any]]) -> None:
     titles = [item["title"] for item in payload]
-    _ensure_sheets(service, spreadsheet_id, titles)
+    title_to_id = _ensure_sheets(service, spreadsheet_id, titles)
     for item in payload:
         title = item["title"]
         quoted_title = _quote_sheet_name(title)
@@ -223,6 +369,7 @@ def _write_payload(service, spreadsheet_id: str, payload: list[dict[str, Any]]) 
             valueInputOption="RAW",
             body={"values": item["values"]},
         ).execute()
+    _apply_report_formatting(service, spreadsheet_id, payload, title_to_id)
 
 
 def update_descriptor_criteria_google_report(job_run: JobRun) -> dict[str, Any]:
