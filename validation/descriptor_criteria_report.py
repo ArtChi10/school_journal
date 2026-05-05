@@ -29,42 +29,19 @@ COLOR_RED = {"red": 0.98, "green": 0.8, "blue": 0.8}
 COLOR_GRAY = {"red": 0.9, "green": 0.9, "blue": 0.9}
 COLOR_HEADER = {"red": 0.93, "green": 0.94, "blue": 0.96}
 
-ALL_SUBJECTS_HEADERS = [
-    "class_code",
-    "subject_name",
-    "teacher_name",
-    "module_number",
-    "descriptor_status",
-    "criteria_status",
-    "criteria_filled",
-    "criteria_total",
-    "criteria_missing",
-    "grades_ratio",
-    "grades_status",
-    "grades_filled",
-    "grades_total",
-    "grades_missing",
-    "overall_status",
-    "sheet_url",
+REPORT_COLUMNS = [
+    ("class_code", "Класс"),
+    ("subject_name", "Предмет"),
+    ("teacher_name", "Учитель"),
+    ("module_number", "Модуль"),
+    ("descriptor_status", "Дескриптор"),
+    ("criteria_status", "Критерии"),
+    ("grades_status", "Оценки"),
+    ("overall_status", "Статус"),
+    ("sheet_url", "Ссылка на таблицу"),
 ]
-PROBLEMS_HEADERS = [
-    "class_code",
-    "subject_name",
-    "teacher_name",
-    "module_number",
-    "descriptor_status",
-    "criteria_status",
-    "criteria_filled",
-    "criteria_total",
-    "criteria_missing",
-    "grades_ratio",
-    "grades_status",
-    "grades_filled",
-    "grades_total",
-    "grades_missing",
-    "overall_status",
-    "sheet_url",
-]
+ALL_SUBJECTS_HEADERS = [label for _key, label in REPORT_COLUMNS]
+PROBLEMS_HEADERS = ALL_SUBJECTS_HEADERS
 
 
 class DescriptorCriteriaReportError(RuntimeError):
@@ -86,8 +63,62 @@ def _safe_value(value: Any) -> Any:
     return str(value)
 
 
-def _rows_from_dicts(rows: list[dict], headers: list[str]) -> list[list[Any]]:
-    return [headers] + [[_safe_value(row.get(header)) for header in headers] for row in rows]
+def _descriptor_status_label(value: Any) -> str:
+    return {
+        "filled": "Заполнен",
+        "missing": "Не заполнен",
+        "not_found": "Не найден",
+    }.get(str(value or "").strip().lower(), str(value or "").strip())
+
+
+def _criteria_status_label(value: Any) -> str:
+    return {
+        "filled": "Заполнены",
+        "missing": "Не заполнены",
+        "not_found": "Не найдены",
+    }.get(str(value or "").strip().lower(), str(value or "").strip())
+
+
+def _grades_status_label(value: Any) -> str:
+    return {
+        "ok": "Заполнены",
+        "missing": "Не заполнены",
+        "not_applicable": "Не применимо",
+    }.get(str(value or "").strip().lower(), str(value or "").strip())
+
+
+def _overall_status_label(value: Any) -> str:
+    return {
+        "ok": "OK",
+        "problem": "Есть проблемы",
+    }.get(str(value or "").strip().lower(), str(value or "").strip())
+
+
+def _job_status_label(value: Any) -> str:
+    return {
+        "pending": "Ожидает",
+        "running": "Выполняется",
+        "success": "Успешно",
+        "failed": "Ошибка",
+        "partial": "Частично",
+    }.get(str(value or "").strip().lower(), str(value or "").strip())
+
+
+def _report_value(row: dict, key: str) -> Any:
+    value = row.get(key)
+    if key == "descriptor_status":
+        return _descriptor_status_label(value)
+    if key == "criteria_status":
+        return _criteria_status_label(value)
+    if key == "grades_status":
+        return _grades_status_label(value)
+    if key == "overall_status":
+        return _overall_status_label(value)
+    return _safe_value(value)
+
+
+def _rows_from_dicts(rows: list[dict], columns: list[tuple[str, str]]) -> list[list[Any]]:
+    return [[label for _key, label in columns]] + [[_report_value(row, key) for key, _label in columns] for row in rows]
 
 
 def _summary_values(job_run: JobRun, *, report_status: str = "", report_updated_at: str = "") -> list[list[Any]]:
@@ -95,24 +126,24 @@ def _summary_values(job_run: JobRun, *, report_status: str = "", report_updated_
     summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
     report = result.get("report") if isinstance(result.get("report"), dict) else {}
     rows = [
-        ("run_id", str(job_run.id)),
-        ("started_at", job_run.started_at.isoformat() if job_run.started_at else ""),
-        ("finished_at", job_run.finished_at.isoformat() if job_run.finished_at else ""),
-        ("status", job_run.status),
-        ("classes_checked", summary.get("classes_checked", 0)),
-        ("subjects_checked", summary.get("subjects_checked", 0)),
-        ("fully_filled", summary.get("fully_filled", 0)),
-        ("with_problems", summary.get("with_problems", 0)),
-        ("tables_total", summary.get("tables_total", 0)),
-        ("tables_success", summary.get("tables_success", 0)),
-        ("tables_failed", summary.get("tables_failed", 0)),
-        ("sheets_total", summary.get("sheets_total", 0)),
-        ("sheets_checked", summary.get("sheets_checked", 0)),
-        ("sheets_skipped", summary.get("sheets_skipped", 0)),
-        ("report_status", report_status or report.get("status", "")),
-        ("report_updated_at", report_updated_at or report.get("updated_at", "")),
+        ("ID запуска", str(job_run.id)),
+        ("Начало", job_run.started_at.isoformat() if job_run.started_at else ""),
+        ("Завершение", job_run.finished_at.isoformat() if job_run.finished_at else ""),
+        ("Статус запуска", _job_status_label(job_run.status)),
+        ("Классов проверено", summary.get("classes_checked", 0)),
+        ("Предметов проверено", summary.get("subjects_checked", 0)),
+        ("Полностью заполнено", summary.get("fully_filled", 0)),
+        ("Есть проблемы", summary.get("with_problems", 0)),
+        ("Таблиц всего", summary.get("tables_total", 0)),
+        ("Таблиц успешно", summary.get("tables_success", 0)),
+        ("Таблиц с ошибкой", summary.get("tables_failed", 0)),
+        ("Листов всего", summary.get("sheets_total", 0)),
+        ("Листов проверено", summary.get("sheets_checked", 0)),
+        ("Листов пропущено", summary.get("sheets_skipped", 0)),
+        ("Статус Google-отчета", report_status or report.get("status", "")),
+        ("Google-отчет обновлен", report_updated_at or report.get("updated_at", "")),
     ]
-    return [["metric", "value"], *[[key, _safe_value(value)] for key, value in rows]]
+    return [["Показатель", "Значение"], *[[key, _safe_value(value)] for key, value in rows]]
 
 
 def _sheet_title(raw_title: str, used_titles: set[str]) -> str:
@@ -147,14 +178,14 @@ def build_descriptor_criteria_report_payload(
                 report_updated_at=report_updated_at,
             ),
         },
-        {"title": PROBLEMS_SHEET, "values": _rows_from_dicts(problems, PROBLEMS_HEADERS)},
-        {"title": ALL_SUBJECTS_SHEET, "values": _rows_from_dicts(rows, ALL_SUBJECTS_HEADERS)},
+        {"title": PROBLEMS_SHEET, "values": _rows_from_dicts(problems, REPORT_COLUMNS)},
+        {"title": ALL_SUBJECTS_SHEET, "values": _rows_from_dicts(rows, REPORT_COLUMNS)},
     ]
 
     used_titles = {SUMMARY_SHEET, PROBLEMS_SHEET, ALL_SUBJECTS_SHEET}
     for class_code in sorted({str(row.get("class_code") or "").strip() for row in rows if row.get("class_code")}):
         class_rows = [row for row in rows if str(row.get("class_code") or "").strip() == class_code]
-        payload.append({"title": _sheet_title(class_code, used_titles), "values": _rows_from_dicts(class_rows, ALL_SUBJECTS_HEADERS)})
+        payload.append({"title": _sheet_title(class_code, used_titles), "values": _rows_from_dicts(class_rows, REPORT_COLUMNS)})
 
     return payload
 
@@ -241,6 +272,7 @@ def _background_color_request(sheet_id: int, row_index: int, column_index: int, 
 
 
 def _header_format_requests(sheet_id: int, column_count: int) -> list[dict[str, Any]]:
+    reset_column_count = max(column_count, 26)
     return [
         {
             "repeatCell": {
@@ -249,7 +281,7 @@ def _header_format_requests(sheet_id: int, column_count: int) -> list[dict[str, 
                     "startRowIndex": 0,
                     "endRowIndex": 1000,
                     "startColumnIndex": 0,
-                    "endColumnIndex": max(column_count, 1),
+                    "endColumnIndex": reset_column_count,
                 },
                 "cell": {
                     "userEnteredFormat": {
@@ -299,22 +331,14 @@ def _header_format_requests(sheet_id: int, column_count: int) -> list[dict[str, 
 
 def _status_color(header: str, value: Any, row: dict[str, Any]) -> dict[str, float] | None:
     normalized_value = str(value or "").strip().lower()
-    if header == "descriptor_status":
-        return {"filled": COLOR_GREEN, "missing": COLOR_YELLOW, "not_found": COLOR_RED}.get(normalized_value)
-    if header == "criteria_status":
-        return {"filled": COLOR_GREEN, "missing": COLOR_YELLOW, "not_found": COLOR_RED}.get(normalized_value)
-    if header == "grades_status":
-        return {"ok": COLOR_GREEN, "missing": COLOR_YELLOW, "not_applicable": COLOR_GRAY}.get(normalized_value)
-    if header == "overall_status":
-        return {"ok": COLOR_GREEN, "problem": COLOR_RED}.get(normalized_value)
-    if header in {"criteria_missing", "grades_missing"}:
-        try:
-            count = int(value or 0)
-        except (TypeError, ValueError):
-            return None
-        return COLOR_GREEN if count == 0 else COLOR_YELLOW
-    if header == "grades_ratio":
-        return _status_color("grades_status", row.get("grades_status"), row)
+    if header == "Дескриптор":
+        return {"заполнен": COLOR_GREEN, "не заполнен": COLOR_YELLOW, "не найден": COLOR_RED}.get(normalized_value)
+    if header == "Критерии":
+        return {"заполнены": COLOR_GREEN, "не заполнены": COLOR_YELLOW, "не найдены": COLOR_RED}.get(normalized_value)
+    if header == "Оценки":
+        return {"заполнены": COLOR_GREEN, "не заполнены": COLOR_YELLOW, "не применимо": COLOR_GRAY}.get(normalized_value)
+    if header == "Статус":
+        return {"ok": COLOR_GREEN, "есть проблемы": COLOR_RED}.get(normalized_value)
     return None
 
 
@@ -325,13 +349,10 @@ def _format_requests_for_values(sheet_id: int, values: list[list[Any]]) -> list[
     headers = [str(header) for header in values[0]]
     requests = _header_format_requests(sheet_id, len(headers))
     headers_to_format = {
-        "descriptor_status",
-        "criteria_status",
-        "criteria_missing",
-        "grades_ratio",
-        "grades_status",
-        "grades_missing",
-        "overall_status",
+        "Дескриптор",
+        "Критерии",
+        "Оценки",
+        "Статус",
     }
     for row_index, row_values in enumerate(values[1:], start=1):
         row = {header: row_values[index] if index < len(row_values) else "" for index, header in enumerate(headers)}

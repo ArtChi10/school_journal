@@ -104,31 +104,28 @@ class DescriptorCriteriaReportPayloadTests(TestCase):
 
         problems = next(item for item in payload if item["title"] == PROBLEMS_SHEET)
         self.assertEqual(len(problems["values"]), 2)
-        self.assertIn("grades_ratio", problems["values"][0])
-        self.assertIn("grades_status", problems["values"][0])
+        self.assertEqual(problems["values"][0], ALL_SUBJECTS_HEADERS)
+        self.assertIn("Оценки", problems["values"][0])
+        self.assertNotIn("grades_ratio", problems["values"][0])
+        self.assertNotIn("criteria_total", problems["values"][0])
+        self.assertNotIn("grades_total", problems["values"][0])
         self.assertIn("Science", problems["values"][1])
-        self.assertIn("4/6", problems["values"][1])
+        self.assertIn("Не заполнены", problems["values"][1])
+        self.assertNotIn("4/6", problems["values"][1])
 
 
 class DescriptorCriteriaReportFormattingTests(TestCase):
     def _subject_row(self, **overrides):
         row = {
-            "class_code": "7A",
-            "subject_name": "Math",
-            "teacher_name": "Teacher A",
-            "module_number": 1,
-            "descriptor_status": "filled",
-            "criteria_status": "filled",
-            "criteria_filled": 2,
-            "criteria_total": 2,
-            "criteria_missing": 0,
-            "grades_ratio": "6/6",
-            "grades_status": "ok",
-            "grades_filled": 6,
-            "grades_total": 6,
-            "grades_missing": 0,
-            "overall_status": "ok",
-            "sheet_url": "https://docs.google.com/spreadsheets/d/source/edit",
+            "Класс": "7A",
+            "Предмет": "Math",
+            "Учитель": "Teacher A",
+            "Модуль": 1,
+            "Дескриптор": "Заполнен",
+            "Критерии": "Заполнены",
+            "Оценки": "Заполнены",
+            "Статус": "OK",
+            "Ссылка на таблицу": "https://docs.google.com/spreadsheets/d/source/edit",
         }
         row.update(overrides)
         return [row.get(header, "") for header in ALL_SUBJECTS_HEADERS]
@@ -153,15 +150,12 @@ class DescriptorCriteriaReportFormattingTests(TestCase):
             ALL_SUBJECTS_HEADERS,
             self._subject_row(),
             self._subject_row(
-                descriptor_status="missing",
-                criteria_status="missing",
-                criteria_missing=1,
-                grades_ratio="4/6",
-                grades_status="missing",
-                grades_missing=2,
-                overall_status="problem",
+                Дескриптор="Не заполнен",
+                Критерии="Не заполнены",
+                Оценки="Не заполнены",
+                Статус="Есть проблемы",
             ),
-            self._subject_row(grades_ratio="—", grades_status="not_applicable", grades_missing=0),
+            self._subject_row(Оценки="Не применимо"),
         ]
 
         requests = _format_requests_for_values(123, values)
@@ -177,12 +171,11 @@ class DescriptorCriteriaReportFormattingTests(TestCase):
         self.assertTrue(any("autoResizeDimensions" in request for request in requests))
         self.assertTrue(any(request["repeatCell"]["cell"]["userEnteredFormat"]["textFormat"]["bold"] is True for request in header_requests))
         self.assertIn(COLOR_GREEN, [request["repeatCell"]["cell"]["userEnteredFormat"]["backgroundColor"] for request in requests if "repeatCell" in request])
-        self.assertEqual(colors[(1, ALL_SUBJECTS_HEADERS.index("descriptor_status"))], COLOR_GREEN)
-        self.assertEqual(colors[(2, ALL_SUBJECTS_HEADERS.index("overall_status"))], COLOR_RED)
-        self.assertEqual(colors[(2, ALL_SUBJECTS_HEADERS.index("grades_status"))], COLOR_YELLOW)
-        self.assertEqual(colors[(2, ALL_SUBJECTS_HEADERS.index("grades_ratio"))], COLOR_YELLOW)
-        self.assertEqual(colors[(2, ALL_SUBJECTS_HEADERS.index("grades_missing"))], COLOR_YELLOW)
-        self.assertEqual(colors[(3, ALL_SUBJECTS_HEADERS.index("grades_status"))], COLOR_GRAY)
+        self.assertEqual(colors[(1, ALL_SUBJECTS_HEADERS.index("Дескриптор"))], COLOR_GREEN)
+        self.assertEqual(colors[(2, ALL_SUBJECTS_HEADERS.index("Статус"))], COLOR_RED)
+        self.assertEqual(colors[(2, ALL_SUBJECTS_HEADERS.index("Оценки"))], COLOR_YELLOW)
+        self.assertEqual(colors[(2, ALL_SUBJECTS_HEADERS.index("Критерии"))], COLOR_YELLOW)
+        self.assertEqual(colors[(3, ALL_SUBJECTS_HEADERS.index("Оценки"))], COLOR_GRAY)
 
     def test_write_payload_applies_formatting_after_values(self):
         service = Mock()

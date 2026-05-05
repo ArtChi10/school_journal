@@ -22,7 +22,19 @@ The report updater rewrites these sheets:
 
 The `Problems` sheet contains only subject rows where `overall_status != ok`. The `All subjects` and class sheets contain every checked subject row.
 
-Each subject row includes grade completeness fields. Grades are checked only for filled criteria columns. A criteria cell is not considered filled when it is empty or contains only a number such as `1`, `2`, or `3`. For every student row found below the `Имя` header, the checker expects a non-empty cell at the student x filled-criterion intersection. The main human-readable field is `grades_ratio`, for example `4/6`.
+The report is designed for assistant principals and uses Russian column headers:
+
+- `Класс`
+- `Предмет`
+- `Учитель`
+- `Модуль`
+- `Дескриптор`
+- `Критерии`
+- `Оценки`
+- `Статус`
+- `Ссылка на таблицу`
+
+Counts of criteria and grades remain in `JobRun.result_json`, but the Google report shows only whether descriptors, criteria, and grades are filled. Grades are checked only for filled criteria columns. A criteria cell is not considered filled when it is empty or contains only a number such as `1`, `2`, or `3`.
 
 After values are written, the report applies cell formatting automatically. Header rows are bold, frozen, and lightly shaded. Status and missing-count cells use:
 
