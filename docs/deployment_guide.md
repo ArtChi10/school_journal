@@ -55,6 +55,8 @@ Expected production paths:
 - `/app/creds/google/token.json`
 - `/app/creds/service_account.json`
 
+Descriptor/criteria Google report export rewrites an existing Google Spreadsheet after each check run. Configure the target URL in the admin panel at `Классы и таблицы` -> `Google-отчет`. The OAuth token used by the app must include Google Sheets write access. If the report update fails with insufficient scopes, recreate `token.json` through the local Google OAuth flow and copy it into the production credentials volume again. See `docs/google_report.md`.
+
 ## Start Production Stack
 
 Run Docker Compose with the explicit env file:

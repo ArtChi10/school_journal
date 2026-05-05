@@ -99,7 +99,7 @@ def _build_drive_service():
         from google.auth.transport.requests import Request
         from google.oauth2.credentials import Credentials
 
-        creds = Credentials.from_authorized_user_file(str(token_path), GOOGLE_UPLOAD_SCOPES)
+        creds = Credentials.from_authorized_user_file(str(token_path))
         if not creds.valid:
             if creds.expired and creds.refresh_token:
                 creds.refresh(Request())

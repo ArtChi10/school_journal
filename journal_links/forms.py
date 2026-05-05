@@ -1,7 +1,32 @@
 from django import forms
 from urllib.parse import urlparse
 
-from .models import ClassSheetLink
+from .models import ClassSheetLink, DescriptorCriteriaReportTarget
+
+
+def validate_google_sheet_url(url: str) -> str:
+    url = (url or "").strip()
+    parsed = urlparse(url)
+
+    path_parts = [part for part in parsed.path.split("/") if part]
+    has_valid_spreadsheet_path = (
+        len(path_parts) >= 3
+        and path_parts[0] == "spreadsheets"
+        and path_parts[1] == "d"
+        and bool(path_parts[2])
+    )
+    if not has_valid_spreadsheet_path:
+        raise forms.ValidationError(
+            "Укажите корректную ссылку Google Sheets вида: "
+            "https://docs.google.com/spreadsheets/d/<ID>..."
+        )
+
+    if "/spreadsheets/d/" not in parsed.path:
+        raise forms.ValidationError(
+            "Ссылка должна содержать путь /spreadsheets/d/<ID>."
+        )
+
+    return url
 
 
 class ClassSheetLinkForm(forms.ModelForm):
@@ -48,23 +73,35 @@ class ClassSheetLinkForm(forms.ModelForm):
 
 
     def clean_google_sheet_url(self):
-        url = (self.cleaned_data.get("google_sheet_url") or "").strip()
-        parsed = urlparse(url)
+        return validate_google_sheet_url(self.cleaned_data.get("google_sheet_url") or "")
 
-        path_parts = [part for part in parsed.path.split("/") if part]
-        has_valid_spreadsheet_path = (
-                len(path_parts) >= 3 and path_parts[0] == "spreadsheets" and path_parts[1] == "d" and bool(
-            path_parts[2])
-        )
-        if not has_valid_spreadsheet_path:
-            raise forms.ValidationError(
-                "Укажите корректную ссылку Google Sheets вида: "
-                "https://docs.google.com/spreadsheets/d/<ID>..."
-            )
 
-        if "/spreadsheets/d/" not in parsed.path:
-            raise forms.ValidationError(
-                "Ссылка должна содержать путь /spreadsheets/d/<ID>."
-            )
+class DescriptorCriteriaReportTargetForm(forms.ModelForm):
+    google_sheet_url = forms.URLField(
+        max_length=500,
+        widget=forms.URLInput(attrs={"placeholder": "https://docs.google.com/spreadsheets/d/..."}),
+    )
 
-        return url
+    class Meta:
+        model = DescriptorCriteriaReportTarget
+        fields = ["name", "google_sheet_url", "is_active"]
+        labels = {
+            "name": "Название",
+            "google_sheet_url": "Ссылка на Google Spreadsheet отчета",
+            "is_active": "Активен",
+        }
+        help_texts = {
+            "google_sheet_url": "Один постоянный Google Spreadsheet, который будет обновляться после проверки.",
+        }
+
+    def clean_name(self):
+        return (self.cleaned_data.get("name") or "").strip() or "Descriptor criteria report"
+
+    def clean_google_sheet_url(self):
+        return validate_google_sheet_url(self.cleaned_data.get("google_sheet_url") or "")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["name"].widget.attrs.setdefault("class", "form-control")
+        self.fields["google_sheet_url"].widget.attrs.setdefault("class", "form-control")
+        self.fields["is_active"].widget.attrs.setdefault("class", "form-check-input")

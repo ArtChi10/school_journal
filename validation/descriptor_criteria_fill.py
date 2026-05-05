@@ -216,6 +216,20 @@ def _collect_links(*, class_code: str | None = None, all_active: bool = True) ->
     return list(queryset.order_by("class_code", "id"))
 
 
+def _update_report_status(job_run: JobRun) -> None:
+    from validation.descriptor_criteria_report import update_descriptor_criteria_google_report
+
+    report = update_descriptor_criteria_google_report(job_run)
+    result_json = job_run.result_json if isinstance(job_run.result_json, dict) else {}
+    result_json["report"] = report
+    job_run.result_json = result_json
+    update_fields = ["result_json"]
+    if report.get("status") == "failed" and job_run.status == JobRun.Status.SUCCESS:
+        job_run.status = JobRun.Status.PARTIAL
+        update_fields.append("status")
+    job_run.save(update_fields=update_fields)
+
+
 def enqueue_descriptor_criteria_fill_check_job(
     *,
     class_code: str | None = None,
@@ -433,16 +447,23 @@ def run_descriptor_criteria_fill_check_job(
         job_run.status = final_status
         job_run.finished_at = timezone.now()
         job_run.save(update_fields=["result_json", "status", "finished_at"])
+        _update_report_status(job_run)
         log_step(
             job_run=job_run,
             level=JobLog.Level.INFO,
             message="Descriptor/criteria fill check finished",
-            context={"status": final_status, "summary": summary},
+            context={"status": job_run.status, "summary": summary, "report": job_run.result_json.get("report", {})},
         )
     except Exception as exc:
         job_run.status = JobRun.Status.FAILED
         job_run.finished_at = timezone.now()
-        job_run.result_json = {"summary": {}, "rows": rows, "tables": tables, "error": str(exc)}
+        job_run.result_json = {
+            "summary": {},
+            "rows": rows,
+            "tables": tables,
+            "error": str(exc),
+            "report": {"status": "skipped", "reason": "check_failed"},
+        }
         job_run.save(update_fields=["status", "finished_at", "result_json"])
         log_step(
             job_run=job_run,

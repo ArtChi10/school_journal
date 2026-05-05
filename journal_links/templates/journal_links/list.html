@@ -14,6 +14,9 @@
   {% endif %}
  {% if perms.jobs.run_check_missing_data %}
     <a class="btn btn-outline-primary" href="{% url 'journal_links:descriptor_criteria_fill_check' %}">Проверить дескрипторы и критерии</a>
+    {% if perms.journal_links.change_classsheetlink %}
+      <a class="btn btn-outline-secondary" href="{% url 'journal_links:descriptor_criteria_report_target' %}">Google-отчет</a>
+    {% endif %}
     <form method="post" action="{% url 'journal_links:run_missing_data_check' %}">
       {% csrf_token %}
       <button class="btn btn-warning" type="submit">Проверить незаполненные (лог-чат)</button>

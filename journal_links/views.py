@@ -21,8 +21,8 @@ from validation.descriptor_criteria_fill import (
 )
 from validation.job_runner import run_check_missing_data_job, run_validation_job
 
-from .forms import ClassSheetLinkForm
-from .models import ClassSheetLink
+from .forms import ClassSheetLinkForm, DescriptorCriteriaReportTargetForm
+from .models import ClassSheetLink, DescriptorCriteriaReportTarget
 
 
 def _safe_next_url(request, raw_url: str | None = None) -> str:
@@ -173,6 +173,33 @@ def descriptor_criteria_fill_check(request):
             "job_run": job_run,
             "summary": summary,
             "rows": filtered_rows,
+        },
+    )
+
+
+@login_required
+@permission_required_403(
+    "journal_links.change_classsheetlink",
+    message="Доступ запрещён: нельзя изменять Google-отчет дескрипторов и критериев.",
+)
+def descriptor_criteria_report_target(request):
+    target = DescriptorCriteriaReportTarget.objects.order_by("-is_active", "-updated_at", "-id").first()
+
+    if request.method == "POST":
+        form = DescriptorCriteriaReportTargetForm(request.POST, instance=target)
+        if form.is_valid():
+            target = form.save()
+            messages.success(request, "Google-отчет дескрипторов и критериев сохранен.")
+            return redirect("journal_links:descriptor_criteria_report_target")
+    else:
+        form = DescriptorCriteriaReportTargetForm(instance=target)
+
+    return render(
+        request,
+        "journal_links/descriptor_criteria_report_target.html",
+        {
+            "form": form,
+            "target": target,
         },
     )
 

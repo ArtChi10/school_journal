@@ -10,11 +10,12 @@ from django.urls import reverse
 
 GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive"
 GOOGLE_DRIVE_READONLY_SCOPE = "https://www.googleapis.com/auth/drive.readonly"
+GOOGLE_SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
 GOOGLE_SHEETS_READONLY_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly"
 
 GOOGLE_OAUTH_SCOPES = [
     GOOGLE_DRIVE_SCOPE,
-    GOOGLE_SHEETS_READONLY_SCOPE,
+    GOOGLE_SHEETS_SCOPE,
 ]
 GOOGLE_OAUTH_DOWNLOAD_SCOPES = [GOOGLE_DRIVE_READONLY_SCOPE, GOOGLE_SHEETS_READONLY_SCOPE]
 GOOGLE_OAUTH_UPLOAD_SCOPES = [GOOGLE_DRIVE_SCOPE]

@@ -33,6 +33,7 @@ Use this checklist before promoting the production Docker Compose stack.
 - [ ] GitHub Actions CD deploys over SSH only after pre-deploy checks pass.
 - [ ] GitHub Actions CD uses `docker-compose.server.yml` and does not overwrite `.env.production`.
 - [ ] GitHub Actions CD health check passes against the forwarded HTTP `/healthz` URL.
+- [ ] If descriptor/criteria Google report export is used, an active report target is configured and the OAuth token has Google Sheets write scope.
 - [ ] Future task: document and test PostgreSQL backup and restore.
 - [ ] Future task: add HTTPS/TLS configuration.
 - [ ] Future task: add automated rollback for CD.

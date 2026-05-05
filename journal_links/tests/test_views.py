@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from jobs.models import JobRun
-from journal_links.models import ClassSheetLink
+from journal_links.models import ClassSheetLink, DescriptorCriteriaReportTarget
 
 
 class JournalLinkViewsTests(TestCase):
@@ -43,3 +43,25 @@ class JournalLinkViewsTests(TestCase):
         self.assertContains(response, "Google Sheet")
         self.assertNotContains(response, "Science")
         self.assertNotContains(response, "Teacher")
+
+    def test_report_target_requires_change_permission(self):
+        response = self.client.get(reverse("journal_links:descriptor_criteria_report_target"))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_report_target_form_saves_active_target(self):
+        self.user.user_permissions.add(Permission.objects.get(codename="change_classsheetlink"))
+
+        response = self.client.post(
+            reverse("journal_links:descriptor_criteria_report_target"),
+            {
+                "name": "Descriptor report",
+                "google_sheet_url": "https://docs.google.com/spreadsheets/d/report123/edit",
+                "is_active": "on",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        target = DescriptorCriteriaReportTarget.objects.get()
+        self.assertEqual(target.name, "Descriptor report")
+        self.assertTrue(target.is_active)

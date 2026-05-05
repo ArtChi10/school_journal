@@ -8,7 +8,7 @@ from django.urls import reverse
 from openpyxl import Workbook
 
 from jobs.models import JobRun
-from journal_links.models import ClassSheetLink
+from journal_links.models import ClassSheetLink, DescriptorCriteriaReportTarget
 from validation.descriptor_criteria_fill import (
     JOB_TYPE,
     check_workbook_descriptor_criteria,
@@ -134,12 +134,33 @@ class DescriptorCriteriaFillJobTests(TestCase):
         self.assertEqual(job_run.result_json["summary"]["classes_checked"], 1)
         self.assertEqual(job_run.result_json["summary"]["subjects_checked"], 1)
         self.assertEqual(job_run.result_json["summary"]["with_problems"], 1)
+        self.assertEqual(job_run.result_json["report"]["status"], "not_configured")
         self.assertEqual(len(job_run.result_json["rows"]), 1)
         self.assertTrue(job_run.logs.filter(message="Class check started").exists())
         self.assertTrue(job_run.logs.filter(message="Workbook downloaded").exists())
         self.assertTrue(job_run.logs.filter(message="Sheet checked").exists())
         self.assertTrue(job_run.logs.filter(message="Problems found").exists())
         self.assertTrue(job_run.logs.filter(message="Descriptor/criteria fill check finished").exists())
+
+    @patch("validation.descriptor_criteria_report._write_payload", side_effect=RuntimeError("write denied"))
+    @patch("validation.descriptor_criteria_report._build_sheets_service")
+    def test_report_failure_keeps_check_result_and_marks_job_partial(self, _mocked_service, _mocked_write):
+        DescriptorCriteriaReportTarget.objects.create(
+            name="Report",
+            google_sheet_url="https://docs.google.com/spreadsheets/d/report123/edit",
+            is_active=True,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_path = Path(tmpdir) / "source.xlsx"
+            _build_descriptor_criteria_workbook(source_path)
+
+            with patch("validation.descriptor_criteria_fill.fetch_workbook_for_link", return_value=source_path):
+                job_run = run_descriptor_criteria_fill_check_job(class_code="7A")
+
+        self.assertEqual(job_run.status, JobRun.Status.PARTIAL)
+        self.assertEqual(job_run.result_json["summary"]["subjects_checked"], 1)
+        self.assertEqual(job_run.result_json["report"]["status"], "failed")
+        self.assertTrue(job_run.logs.filter(message="Report update failed").exists())
 
     def test_enqueue_creates_pending_job_and_starts_worker(self):
         with patch("validation.descriptor_criteria_fill.threading.Thread") as thread_cls:

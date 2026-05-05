@@ -18,6 +18,9 @@
 
 {% block page_actions %}
   <a class="btn btn-outline-secondary" href="{% url 'journal_links:list_links' %}">Назад к ссылкам</a>
+  {% if perms.journal_links.change_classsheetlink %}
+    <a class="btn btn-outline-secondary" href="{% url 'journal_links:descriptor_criteria_report_target' %}">Google-отчет</a>
+  {% endif %}
   {% if job_run %}
     <a class="btn btn-outline-secondary" href="{% url 'job_run_detail' job_run.id %}">Открыть JobRun</a>
   {% endif %}
@@ -48,6 +51,11 @@
     {% if job_run.status == "pending" or job_run.status == "running" %}
       <section class="alert alert-info shadow-sm" role="status">
         Проверка выполняется. Страница обновляется автоматически.
+      </section>
+    {% endif %}
+    {% if job_run.result_json.report.status %}
+      <section class="alert {% if job_run.result_json.report.status == 'failed' %}alert-warning{% else %}alert-secondary{% endif %} shadow-sm" role="status">
+        Google-отчет: {{ job_run.result_json.report.status }}
       </section>
     {% endif %}
 

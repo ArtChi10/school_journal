@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block page_title %}Google-отчет дескрипторов и критериев{% endblock %}
+{% block page_heading %}Google-отчет дескрипторов и критериев{% endblock %}
+
+{% block breadcrumbs %}
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0">
+      <li class="breadcrumb-item"><a href="{% url 'journal_links:list_links' %}">Классы и таблицы</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'journal_links:descriptor_criteria_fill_check' %}">Дескрипторы и критерии</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Google-отчет</li>
+    </ol>
+  </nav>
+{% endblock %}
+
+{% block page_actions %}
+  <a class="btn btn-outline-secondary" href="{% url 'journal_links:descriptor_criteria_fill_check' %}">Назад к проверке</a>
+  {% if target.google_sheet_url %}
+    <a class="btn btn-outline-primary" href="{{ target.google_sheet_url }}" target="_blank" rel="noopener">Открыть отчет</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+  <section class="card">
+    <div class="card-body">
+      <form method="post" class="row g-3">
+        {% csrf_token %}
+        <div class="col-12 col-xl-6">
+          <label class="form-label" for="{{ form.name.id_for_label }}">{{ form.name.label }}</label>
+          {{ form.name }}
+          {% if form.name.errors %}<div class="text-danger small mt-1">{{ form.name.errors|join:", " }}</div>{% endif %}
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="{{ form.google_sheet_url.id_for_label }}">{{ form.google_sheet_url.label }}</label>
+          {{ form.google_sheet_url }}
+          {% if form.google_sheet_url.help_text %}<div class="form-text">{{ form.google_sheet_url.help_text }}</div>{% endif %}
+          {% if form.google_sheet_url.errors %}<div class="text-danger small mt-1">{{ form.google_sheet_url.errors|join:", " }}</div>{% endif %}
+        </div>
+        <div class="col-12">
+          <div class="form-check">
+            {{ form.is_active }}
+            <label class="form-check-label" for="{{ form.is_active.id_for_label }}">{{ form.is_active.label }}</label>
+          </div>
+          {% if form.is_active.errors %}<div class="text-danger small mt-1">{{ form.is_active.errors|join:", " }}</div>{% endif %}
+        </div>
+        {% if form.non_field_errors %}
+          <div class="col-12">
+            <div class="alert alert-danger">{{ form.non_field_errors|join:", " }}</div>
+          </div>
+        {% endif %}
+        <div class="col-12 d-flex gap-2">
+          <button class="btn btn-primary" type="submit">Сохранить</button>
+          <a class="btn btn-outline-secondary" href="{% url 'journal_links:list_links' %}">Отмена</a>
+        </div>
+      </form>
+    </div>
+  </section>
+{% endblock %}

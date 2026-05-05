@@ -1,6 +1,6 @@
 from django.test import TestCase
 
-from journal_links.forms import ClassSheetLinkForm
+from journal_links.forms import ClassSheetLinkForm, DescriptorCriteriaReportTargetForm
 from journal_links.models import ClassSheetLink
 
 
@@ -104,3 +104,28 @@ class ClassSheetLinkFormTests(TestCase):
         )
 
         self.assertTrue(form.is_valid())
+
+
+class DescriptorCriteriaReportTargetFormTests(TestCase):
+    def test_accepts_google_sheets_report_url(self):
+        form = DescriptorCriteriaReportTargetForm(
+            data={
+                "name": "Descriptor report",
+                "google_sheet_url": "https://docs.google.com/spreadsheets/d/report123/edit#gid=0",
+                "is_active": True,
+            }
+        )
+
+        self.assertTrue(form.is_valid())
+
+    def test_rejects_non_sheet_report_url(self):
+        form = DescriptorCriteriaReportTargetForm(
+            data={
+                "name": "Descriptor report",
+                "google_sheet_url": "https://drive.google.com/file/d/report123",
+                "is_active": True,
+            }
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("google_sheet_url", form.errors)
