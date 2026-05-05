@@ -359,15 +359,22 @@ def _apply_report_formatting(service, spreadsheet_id: str, payload: list[dict[st
 def _write_payload(service, spreadsheet_id: str, payload: list[dict[str, Any]]) -> None:
     titles = [item["title"] for item in payload]
     title_to_id = _ensure_sheets(service, spreadsheet_id, titles)
+    ranges_to_clear = []
+    data_to_update = []
     for item in payload:
-        title = item["title"]
-        quoted_title = _quote_sheet_name(title)
-        service.spreadsheets().values().clear(spreadsheetId=spreadsheet_id, range=f"{quoted_title}!A:Z", body={}).execute()
-        service.spreadsheets().values().update(
+        quoted_title = _quote_sheet_name(item["title"])
+        ranges_to_clear.append(f"{quoted_title}!A:Z")
+        data_to_update.append({"range": f"{quoted_title}!A1", "values": item["values"]})
+
+    if ranges_to_clear:
+        service.spreadsheets().values().batchClear(
             spreadsheetId=spreadsheet_id,
-            range=f"{quoted_title}!A1",
-            valueInputOption="RAW",
-            body={"values": item["values"]},
+            body={"ranges": ranges_to_clear},
+        ).execute()
+    if data_to_update:
+        service.spreadsheets().values().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={"valueInputOption": "RAW", "data": data_to_update},
         ).execute()
     _apply_report_formatting(service, spreadsheet_id, payload, title_to_id)
 

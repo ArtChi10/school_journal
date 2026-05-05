@@ -30,6 +30,8 @@ After values are written, the report applies cell formatting automatically. Head
 - yellow or red for missing values and problem statuses;
 - gray for not-applicable grade checks.
 
+The updater uses Google Sheets batch requests for clearing and writing report tabs, so a full-class report does not send one write request per sheet.
+
 ## OAuth Scope
 
 Report export needs write access to Google Sheets. The OAuth token must include:

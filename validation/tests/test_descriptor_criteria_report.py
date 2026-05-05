@@ -192,14 +192,18 @@ class DescriptorCriteriaReportFormattingTests(TestCase):
         }
         spreadsheets.batchUpdate.return_value.execute.return_value = {}
         values_service = spreadsheets.values.return_value
-        values_service.clear.return_value.execute.return_value = {}
-        values_service.update.return_value.execute.return_value = {}
+        values_service.batchClear.return_value.execute.return_value = {}
+        values_service.batchUpdate.return_value.execute.return_value = {}
         payload = [{"title": ALL_SUBJECTS_SHEET, "values": [ALL_SUBJECTS_HEADERS, self._subject_row(overall_status="problem")]}]
 
         _write_payload(service, "spreadsheet123", payload)
 
-        values_service.clear.assert_called_once()
-        values_service.update.assert_called_once()
+        values_service.batchClear.assert_called_once()
+        values_service.batchUpdate.assert_called_once()
+        values_service.clear.assert_not_called()
+        values_service.update.assert_not_called()
+        self.assertEqual(values_service.batchClear.call_args.kwargs["body"]["ranges"], ["'All subjects'!A:Z"])
+        self.assertEqual(values_service.batchUpdate.call_args.kwargs["body"]["data"][0]["range"], "'All subjects'!A1")
         spreadsheets.batchUpdate.assert_called_once()
         body = spreadsheets.batchUpdate.call_args.kwargs["body"]
         self.assertTrue(body["requests"])
