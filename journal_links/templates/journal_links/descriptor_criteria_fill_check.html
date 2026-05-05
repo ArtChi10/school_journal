@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 {% block page_title %}Проверка дескрипторов и критериев{% endblock %}
 {% block page_heading %}Проверка дескрипторов и критериев{% endblock %}
+{% block extra_head %}
+  {% if job_run.status == "pending" or job_run.status == "running" %}
+    <meta http-equiv="refresh" content="10">
+  {% endif %}
+{% endblock %}
 
 {% block breadcrumbs %}
   <nav aria-label="breadcrumb" class="mb-3">
@@ -40,6 +45,12 @@
   </section>
 
   {% if job_run %}
+    {% if job_run.status == "pending" or job_run.status == "running" %}
+      <section class="alert alert-info shadow-sm" role="status">
+        Проверка выполняется. Страница обновляется автоматически.
+      </section>
+    {% endif %}
+
     <section class="row g-3 mb-4">
       <div class="col-12 col-md-6 col-xl-3">
         <div class="card h-100">

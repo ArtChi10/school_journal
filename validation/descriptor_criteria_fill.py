@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import re
+import threading
 from pathlib import Path
 from typing import Any
 from zipfile import BadZipFile
 
+from django.db import close_old_connections
 from django.utils import timezone
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
@@ -42,23 +44,31 @@ def _classify_sheet_type(sheet_name: str) -> str:
     return "subject"
 
 
+def _cell_value(ws, row_num: int, col_num: int) -> object:
+    cell = ws._cells.get((row_num, col_num))
+    return cell.value if cell is not None else None
+
+
+def _iter_non_empty_cells(ws):
+    for (row_num, col_num), cell in sorted(ws._cells.items()):
+        if not _is_empty(cell.value):
+            yield row_num, col_num, cell.value
+
+
 def _get_real_data_bounds(ws) -> tuple[int, int]:
     max_row = 0
     max_col = 0
-    for row_num in range(1, ws.max_row + 1):
-        for col_num in range(1, ws.max_column + 1):
-            if not _is_empty(ws.cell(row=row_num, column=col_num).value):
-                max_row = max(max_row, row_num)
-                max_col = max(max_col, col_num)
+    for row_num, col_num, _value in _iter_non_empty_cells(ws):
+        max_row = max(max_row, row_num)
+        max_col = max(max_col, col_num)
     return max_row, max_col
 
 
-def _find_anchor(ws, max_row: int, max_col: int, *tokens: str) -> tuple[int, int] | None:
-    for row_num in range(1, max_row + 1):
-        for col_num in range(1, max_col + 1):
-            normalized = _normalize_text(ws.cell(row=row_num, column=col_num).value)
-            if normalized and all(token in normalized for token in tokens):
-                return row_num, col_num
+def _find_anchor(ws, *tokens: str) -> tuple[int, int] | None:
+    for row_num, col_num, value in _iter_non_empty_cells(ws):
+        normalized = _normalize_text(value)
+        if normalized and all(token in normalized for token in tokens):
+            return row_num, col_num
     return None
 
 
@@ -66,7 +76,7 @@ def _cell_right_value(ws, anchor: tuple[int, int] | None) -> object:
     if anchor is None:
         return None
     row_num, col_num = anchor
-    return ws.cell(row=row_num, column=col_num + 1).value
+    return _cell_value(ws, row_num, col_num + 1)
 
 
 def _parse_module_number(value: object) -> int | None:
@@ -85,7 +95,7 @@ def _parse_module_number(value: object) -> int | None:
 
 def _find_comment_col(ws, criteria_row: int, start_col: int, max_col: int) -> int | None:
     for col_num in range(start_col, max_col + 1):
-        normalized = _normalize_text(ws.cell(row=criteria_row, column=col_num).value)
+        normalized = _normalize_text(_cell_value(ws, criteria_row, col_num))
         if "коммент" in normalized or "comment" in normalized:
             return col_num
     return None
@@ -93,13 +103,13 @@ def _find_comment_col(ws, criteria_row: int, start_col: int, max_col: int) -> in
 
 def check_subject_sheet(ws, *, class_code: str, sheet_url: str) -> dict:
     max_row, max_col = _get_real_data_bounds(ws)
-    class_anchor = _find_anchor(ws, max_row, max_col, "класс", "grade")
-    teacher_anchor = _find_anchor(ws, max_row, max_col, "учитель", "teacher")
-    module_anchor = _find_anchor(ws, max_row, max_col, "module")
+    class_anchor = _find_anchor(ws, "класс", "grade")
+    teacher_anchor = _find_anchor(ws, "учитель", "teacher")
+    module_anchor = _find_anchor(ws, "module")
     if module_anchor is None:
-        module_anchor = _find_anchor(ws, max_row, max_col, "модуль")
-    descriptor_anchor = _find_anchor(ws, max_row, max_col, "дескриптор", "descriptor")
-    criteria_anchor = _find_anchor(ws, max_row, max_col, "критерии оценивания", "assessment criteria")
+        module_anchor = _find_anchor(ws, "модуль")
+    descriptor_anchor = _find_anchor(ws, "дескриптор", "descriptor")
+    criteria_anchor = _find_anchor(ws, "критерии оценивания", "assessment criteria")
 
     teacher_name = str(_cell_right_value(ws, teacher_anchor) or "").strip()
     module_number = _parse_module_number(_cell_right_value(ws, module_anchor))
@@ -122,7 +132,7 @@ def check_subject_sheet(ws, *, class_code: str, sheet_url: str) -> dict:
         end_col = (comment_col - 1) if comment_col else max_col
         criteria_total = max(0, end_col - criteria_col)
         for col_num in range(criteria_col + 1, end_col + 1):
-            value = ws.cell(row=criteria_row, column=col_num).value
+            value = _cell_value(ws, criteria_row, col_num)
             if _is_empty(value):
                 criteria_missing += 1
             else:
@@ -206,21 +216,83 @@ def _collect_links(*, class_code: str | None = None, all_active: bool = True) ->
     return list(queryset.order_by("class_code", "id"))
 
 
-def run_descriptor_criteria_fill_check_job(
+def enqueue_descriptor_criteria_fill_check_job(
     *,
     class_code: str | None = None,
     all_active: bool = True,
     initiated_by=None,
 ) -> JobRun:
-    links = _collect_links(class_code=class_code, all_active=all_active)
     params = {"class_code": class_code, "all_active": all_active}
     job_run = JobRun.objects.create(
         job_type=JOB_TYPE,
-        status=JobRun.Status.RUNNING,
+        status=JobRun.Status.PENDING,
         started_at=timezone.now(),
         params_json=params,
         initiated_by=initiated_by,
     )
+    log_step(
+        job_run=job_run,
+        level=JobLog.Level.INFO,
+        message="Descriptor/criteria fill check queued",
+        context=params,
+    )
+    thread = threading.Thread(
+        target=_run_descriptor_criteria_fill_check_thread,
+        args=(str(job_run.id), class_code, all_active),
+        daemon=True,
+    )
+    thread.start()
+    return job_run
+
+
+def _run_descriptor_criteria_fill_check_thread(job_run_id: str, class_code: str | None, all_active: bool) -> None:
+    close_old_connections()
+    try:
+        job_run = JobRun.objects.get(id=job_run_id)
+        run_descriptor_criteria_fill_check_job(class_code=class_code, all_active=all_active, job_run=job_run)
+    except Exception as exc:  # noqa: BLE001
+        try:
+            job_run = JobRun.objects.get(id=job_run_id)
+            job_run.status = JobRun.Status.FAILED
+            job_run.finished_at = timezone.now()
+            job_run.result_json = {"summary": {}, "rows": [], "tables": [], "error": str(exc)}
+            job_run.save(update_fields=["status", "finished_at", "result_json"])
+            log_step(
+                job_run=job_run,
+                level=JobLog.Level.ERROR,
+                message="Descriptor/criteria fill check background worker failed",
+                context={"reason": str(exc)},
+            )
+        except Exception:
+            pass
+    finally:
+        close_old_connections()
+
+
+def run_descriptor_criteria_fill_check_job(
+    *,
+    class_code: str | None = None,
+    all_active: bool = True,
+    initiated_by=None,
+    job_run: JobRun | None = None,
+) -> JobRun:
+    links = _collect_links(class_code=class_code, all_active=all_active)
+    params = {"class_code": class_code, "all_active": all_active}
+    if job_run is None:
+        job_run = JobRun.objects.create(
+            job_type=JOB_TYPE,
+            status=JobRun.Status.RUNNING,
+            started_at=timezone.now(),
+            params_json=params,
+            initiated_by=initiated_by,
+        )
+    else:
+        job_run.status = JobRun.Status.RUNNING
+        job_run.started_at = job_run.started_at or timezone.now()
+        job_run.finished_at = None
+        job_run.params_json = params
+        job_run.result_json = {}
+        job_run.save(update_fields=["status", "started_at", "finished_at", "params_json", "result_json"])
     log_step(
         job_run=job_run,
         level=JobLog.Level.INFO,

@@ -12,6 +12,7 @@ from journal_links.models import ClassSheetLink
 from validation.descriptor_criteria_fill import (
     JOB_TYPE,
     check_workbook_descriptor_criteria,
+    enqueue_descriptor_criteria_fill_check_job,
     run_descriptor_criteria_fill_check_job,
 )
 
@@ -140,6 +141,16 @@ class DescriptorCriteriaFillJobTests(TestCase):
         self.assertTrue(job_run.logs.filter(message="Problems found").exists())
         self.assertTrue(job_run.logs.filter(message="Descriptor/criteria fill check finished").exists())
 
+    def test_enqueue_creates_pending_job_and_starts_worker(self):
+        with patch("validation.descriptor_criteria_fill.threading.Thread") as thread_cls:
+            job_run = enqueue_descriptor_criteria_fill_check_job(class_code="7A")
+
+        self.assertEqual(job_run.status, JobRun.Status.PENDING)
+        self.assertEqual(job_run.params_json, {"class_code": "7A", "all_active": True})
+        self.assertTrue(job_run.logs.filter(message="Descriptor/criteria fill check queued").exists())
+        thread_cls.assert_called_once()
+        thread_cls.return_value.start.assert_called_once()
+
 
 class DescriptorCriteriaFillViewTests(TestCase):
     def setUp(self):
@@ -164,7 +175,7 @@ class DescriptorCriteriaFillViewTests(TestCase):
         fake_job = JobRun.objects.create(job_type=JOB_TYPE, result_json={"summary": {}, "rows": []})
 
         with patch(
-            "journal_links.views.run_descriptor_criteria_fill_check_job",
+            "journal_links.views.enqueue_descriptor_criteria_fill_check_job",
             return_value=fake_job,
         ) as mocked:
             response = self.client.post(

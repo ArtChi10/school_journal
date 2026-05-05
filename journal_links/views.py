@@ -17,7 +17,7 @@ from admin_panel.google_oauth import (
 from jobs.models import JobRun
 from validation.descriptor_criteria_fill import (
     JOB_TYPE as DESCRIPTOR_CRITERIA_FILL_JOB_TYPE,
-    run_descriptor_criteria_fill_check_job,
+    enqueue_descriptor_criteria_fill_check_job,
 )
 from validation.job_runner import run_check_missing_data_job, run_validation_job
 
@@ -135,12 +135,12 @@ def descriptor_criteria_fill_check(request):
 
     if request.method == "POST":
         class_code = _non_empty(request.POST.get("class_code")) or None
-        job_run = run_descriptor_criteria_fill_check_job(
+        job_run = enqueue_descriptor_criteria_fill_check_job(
             class_code=class_code,
             all_active=class_code is None,
             initiated_by=request.user if request.user.is_authenticated else None,
         )
-        messages.success(request, "Проверка дескрипторов и критериев завершена.")
+        messages.success(request, "Проверка дескрипторов и критериев запущена.")
         return redirect(f"{reverse('journal_links:descriptor_criteria_fill_check')}?run_id={job_run.id}")
 
     requested_run_id = _non_empty(request.GET.get("run_id"))
