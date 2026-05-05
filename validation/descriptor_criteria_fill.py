@@ -27,6 +27,14 @@ def _is_empty(value: Any) -> bool:
     return value is None or str(value).strip() == ""
 
 
+def _is_filled_criteria_value(value: Any) -> bool:
+    if _is_empty(value):
+        return False
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return False
+    return re.fullmatch(r"\d+(?:[.,]\d+)?", str(value).strip()) is None
+
+
 def _normalize_text(value: object) -> str:
     text = "" if value is None else str(value)
     text = text.replace("\r\n", "\n").replace("\xa0", " ")
@@ -181,7 +189,7 @@ def check_subject_sheet(ws, *, class_code: str, sheet_url: str) -> dict:
         criteria_total = max(0, end_col - criteria_col)
         for col_num in range(criteria_col + 1, end_col + 1):
             value = _cell_value(ws, criteria_row, col_num)
-            if _is_empty(value):
+            if not _is_filled_criteria_value(value):
                 criteria_missing += 1
             else:
                 criteria_filled += 1

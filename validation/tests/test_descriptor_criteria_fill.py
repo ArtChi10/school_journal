@@ -225,6 +225,38 @@ class DescriptorCriteriaFillWorkbookTests(TestCase):
         self.assertEqual(row["grades_total"], 0)
         self.assertEqual(row["grades_status"], "not_applicable")
 
+    def test_numeric_only_criteria_are_treated_as_missing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = Path(tmpdir) / "numeric_criteria.xlsx"
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Math"
+            ws.cell(row=4, column=2, value="Дескриптор | Descriptor")
+            ws.cell(row=4, column=3, value="Descriptor")
+            ws.cell(row=6, column=2, value="Критерии оценивания | Assessment criteria")
+            ws.cell(row=6, column=3, value=1)
+            ws.cell(row=6, column=4, value="2")
+            ws.cell(row=6, column=5, value="Комментарий")
+            ws.cell(row=8, column=1, value="Имя")
+            ws.cell(row=9, column=1, value="Ada")
+            ws.cell(row=9, column=3, value=5)
+            ws.cell(row=9, column=4, value=5)
+            wb.save(workbook_path)
+
+            result = check_workbook_descriptor_criteria(
+                str(workbook_path),
+                class_code="7A",
+                sheet_url="https://docs.google.com/spreadsheets/d/abc123/edit",
+            )
+
+        row = result["rows"][0]
+        self.assertEqual(row["criteria_total"], 2)
+        self.assertEqual(row["criteria_filled"], 0)
+        self.assertEqual(row["criteria_missing"], 2)
+        self.assertEqual(row["grades_total"], 0)
+        self.assertEqual(row["grades_status"], "not_applicable")
+        self.assertEqual(row["overall_status"], "problem")
+
 
 class DescriptorCriteriaFillJobTests(TestCase):
     @classmethod

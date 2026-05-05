@@ -22,7 +22,7 @@ The report updater rewrites these sheets:
 
 The `Problems` sheet contains only subject rows where `overall_status != ok`. The `All subjects` and class sheets contain every checked subject row.
 
-Each subject row includes grade completeness fields. Grades are checked only for non-empty criteria columns. For every student row found below the `Имя` header, the checker expects a non-empty cell at the student x criterion intersection. The main human-readable field is `grades_ratio`, for example `4/6`.
+Each subject row includes grade completeness fields. Grades are checked only for filled criteria columns. A criteria cell is not considered filled when it is empty or contains only a number such as `1`, `2`, or `3`. For every student row found below the `Имя` header, the checker expects a non-empty cell at the student x filled-criterion intersection. The main human-readable field is `grades_ratio`, for example `4/6`.
 
 ## OAuth Scope
 
