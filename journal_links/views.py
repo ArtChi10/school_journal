@@ -14,6 +14,11 @@ from admin_panel.google_oauth import (
     complete_google_oauth,
     get_google_oauth_status,
 )
+from jobs.models import JobRun
+from validation.descriptor_criteria_fill import (
+    JOB_TYPE as DESCRIPTOR_CRITERIA_FILL_JOB_TYPE,
+    run_descriptor_criteria_fill_check_job,
+)
 from validation.job_runner import run_check_missing_data_job, run_validation_job
 
 from .forms import ClassSheetLinkForm
@@ -32,6 +37,48 @@ def _clear_google_oauth_session(request) -> None:
     request.session.pop(GOOGLE_OAUTH_STATE_SESSION_KEY, None)
     request.session.pop(GOOGLE_OAUTH_NEXT_SESSION_KEY, None)
     request.session.pop(GOOGLE_OAUTH_CODE_VERIFIER_SESSION_KEY, None)
+
+
+def _non_empty(value: str | None) -> str:
+    return (value or "").strip()
+
+
+def _latest_descriptor_criteria_run() -> JobRun | None:
+    return (
+        JobRun.objects.filter(job_type=DESCRIPTOR_CRITERIA_FILL_JOB_TYPE)
+        .order_by("-started_at", "-id")
+        .first()
+    )
+
+
+def _descriptor_criteria_rows(job_run: JobRun | None) -> list[dict]:
+    if job_run is None or not isinstance(job_run.result_json, dict):
+        return []
+    rows = job_run.result_json.get("rows", [])
+    return [row for row in rows if isinstance(row, dict)]
+
+
+def _filter_descriptor_criteria_rows(rows: list[dict], request) -> list[dict]:
+    class_code = _non_empty(request.GET.get("class_code"))
+    teacher = _non_empty(request.GET.get("teacher"))
+    status = _non_empty(request.GET.get("status"))
+
+    filtered = rows
+    if class_code:
+        filtered = [row for row in filtered if str(row.get("class_code", "")) == class_code]
+    if teacher:
+        teacher_lower = teacher.lower()
+        filtered = [row for row in filtered if teacher_lower in str(row.get("teacher_name", "")).lower()]
+    if status:
+        filtered = [row for row in filtered if str(row.get("overall_status", "")) == status]
+    return filtered
+
+
+def _descriptor_criteria_filter_options(rows: list[dict]) -> dict[str, list[str]]:
+    return {
+        "classes": sorted({str(row.get("class_code") or "") for row in rows if row.get("class_code")}),
+        "teachers": sorted({str(row.get("teacher_name") or "") for row in rows if row.get("teacher_name")}),
+    }
 
 
 @login_required
@@ -74,6 +121,59 @@ def edit_link(request, pk):
         request,
         "journal_links/form.html",
         {"form": form, "title": "Классы и таблицы: редактировать ссылку", "submit_label": "Сохранить"},
+    )
+
+
+@login_required
+@permission_required_403(
+    "jobs.run_check_missing_data",
+    message="Доступ запрещён: нельзя запускать проверку дескрипторов и критериев.",
+)
+def descriptor_criteria_fill_check(request):
+    active_links = list(ClassSheetLink.objects.filter(is_active=True).order_by("class_code", "id"))
+    class_options = sorted({link.class_code for link in active_links})
+
+    if request.method == "POST":
+        class_code = _non_empty(request.POST.get("class_code")) or None
+        job_run = run_descriptor_criteria_fill_check_job(
+            class_code=class_code,
+            all_active=class_code is None,
+            initiated_by=request.user if request.user.is_authenticated else None,
+        )
+        messages.success(request, "Проверка дескрипторов и критериев завершена.")
+        return redirect(f"{reverse('journal_links:descriptor_criteria_fill_check')}?run_id={job_run.id}")
+
+    requested_run_id = _non_empty(request.GET.get("run_id"))
+    job_run = None
+    if requested_run_id:
+        job_run = get_object_or_404(JobRun, id=requested_run_id, job_type=DESCRIPTOR_CRITERIA_FILL_JOB_TYPE)
+    else:
+        job_run = _latest_descriptor_criteria_run()
+
+    rows = _descriptor_criteria_rows(job_run)
+    filtered_rows = _filter_descriptor_criteria_rows(rows, request)
+    summary = {}
+    if job_run and isinstance(job_run.result_json, dict):
+        possible_summary = job_run.result_json.get("summary", {})
+        if isinstance(possible_summary, dict):
+            summary = possible_summary
+
+    return render(
+        request,
+        "journal_links/descriptor_criteria_fill_check.html",
+        {
+            "active_links": active_links,
+            "class_options": class_options,
+            "filter_options": _descriptor_criteria_filter_options(rows),
+            "filters": {
+                "class_code": request.GET.get("class_code", ""),
+                "teacher": request.GET.get("teacher", ""),
+                "status": request.GET.get("status", ""),
+            },
+            "job_run": job_run,
+            "summary": summary,
+            "rows": filtered_rows,
+        },
     )
 
 

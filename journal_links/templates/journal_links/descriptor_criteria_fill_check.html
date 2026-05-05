@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block page_title %}Проверка дескрипторов и критериев{% endblock %}
+{% block page_heading %}Проверка дескрипторов и критериев{% endblock %}
+
+{% block breadcrumbs %}
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0">
+      <li class="breadcrumb-item"><a href="{% url 'journal_links:list_links' %}">Классы и таблицы</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Дескрипторы и критерии</li>
+    </ol>
+  </nav>
+{% endblock %}
+
+{% block page_actions %}
+  <a class="btn btn-outline-secondary" href="{% url 'journal_links:list_links' %}">Назад к ссылкам</a>
+  {% if job_run %}
+    <a class="btn btn-outline-secondary" href="{% url 'job_run_detail' job_run.id %}">Открыть JobRun</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+  <section class="card mb-4">
+    <div class="card-body">
+      <form method="post" class="row g-3 align-items-end">
+        {% csrf_token %}
+        <div class="col-12 col-md-6 col-xl-4">
+          <label class="form-label" for="id_run_class_code">Класс</label>
+          <select id="id_run_class_code" name="class_code" class="form-select">
+            <option value="">Все активные классы</option>
+            {% for class_code in class_options %}
+              <option value="{{ class_code }}">{{ class_code }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-auto">
+          <button class="btn btn-primary" type="submit">Проверить дескрипторы и критерии</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  {% if job_run %}
+    <section class="row g-3 mb-4">
+      <div class="col-12 col-md-6 col-xl-3">
+        <div class="card h-100">
+          <div class="card-body">
+            <div class="text-secondary small">Классов проверено</div>
+            <div class="display-6">{{ summary.classes_checked|default:0 }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-md-6 col-xl-3">
+        <div class="card h-100">
+          <div class="card-body">
+            <div class="text-secondary small">Предметов проверено</div>
+            <div class="display-6">{{ summary.subjects_checked|default:0 }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-md-6 col-xl-3">
+        <div class="card h-100">
+          <div class="card-body">
+            <div class="text-secondary small">Полностью заполнено</div>
+            <div class="display-6">{{ summary.fully_filled|default:0 }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-md-6 col-xl-3">
+        <div class="card h-100">
+          <div class="card-body">
+            <div class="text-secondary small">Есть проблемы</div>
+            <div class="display-6">{{ summary.with_problems|default:0 }}</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card mb-4">
+      <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+          <input type="hidden" name="run_id" value="{{ job_run.id }}">
+          <div class="col-12 col-md-4 col-xl-3">
+            <label class="form-label" for="id_filter_class">Класс</label>
+            <select id="id_filter_class" name="class_code" class="form-select">
+              <option value="">Все</option>
+              {% for class_code in filter_options.classes %}
+                <option value="{{ class_code }}" {% if filters.class_code == class_code %}selected{% endif %}>{{ class_code }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-4 col-xl-3">
+            <label class="form-label" for="id_filter_teacher">Учитель</label>
+            <select id="id_filter_teacher" name="teacher" class="form-select">
+              <option value="">Все</option>
+              {% for teacher in filter_options.teachers %}
+                <option value="{{ teacher }}" {% if filters.teacher == teacher %}selected{% endif %}>{{ teacher }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-4 col-xl-3">
+            <label class="form-label" for="id_filter_status">Статус</label>
+            <select id="id_filter_status" name="status" class="form-select">
+              <option value="">Все</option>
+              <option value="ok" {% if filters.status == "ok" %}selected{% endif %}>Полностью заполнено</option>
+              <option value="problem" {% if filters.status == "problem" %}selected{% endif %}>Есть проблемы</option>
+            </select>
+          </div>
+          <div class="col-12 col-xl-3 d-flex gap-2">
+            <button class="btn btn-primary" type="submit">Применить</button>
+            <a class="btn btn-outline-secondary" href="{% url 'journal_links:descriptor_criteria_fill_check' %}?run_id={{ job_run.id }}">Сбросить</a>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Класс</th>
+                <th>Предмет</th>
+                <th>Учитель</th>
+                <th>Модуль</th>
+                <th>Дескриптор</th>
+                <th>Критерии</th>
+                <th>Статус</th>
+                <th>Таблица</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in rows %}
+                <tr>
+                  <td>{{ row.class_code }}</td>
+                  <td>{{ row.subject_name }}</td>
+                  <td>{{ row.teacher_name|default:"—" }}</td>
+                  <td>{{ row.module_number|default:"—" }}</td>
+                  <td>
+                    {% if row.descriptor_status == "filled" %}
+                      <span class="badge badge-soft text-bg-success">Заполнен</span>
+                    {% elif row.descriptor_status == "missing" %}
+                      <span class="badge badge-soft text-bg-warning">Пустой</span>
+                    {% else %}
+                      <span class="badge badge-soft text-bg-danger">Не найден</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ row.criteria_filled }} / {{ row.criteria_total }}{% if row.criteria_missing %} · нет {{ row.criteria_missing }}{% endif %}</td>
+                  <td>
+                    {% if row.overall_status == "ok" %}
+                      <span class="badge badge-soft text-bg-success">OK</span>
+                    {% else %}
+                      <span class="badge badge-soft text-bg-warning">Есть проблемы</span>
+                    {% endif %}
+                  </td>
+                  <td><a href="{{ row.sheet_url }}" target="_blank" rel="noopener">Открыть</a></td>
+                </tr>
+              {% empty %}
+                <tr><td class="table-empty" colspan="8">Нет строк для выбранных фильтров.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  {% else %}
+    <section class="card">
+      <div class="card-body">
+        <p class="mb-0 text-secondary">Проверок пока нет. Запустите проверку по всем активным классам или выберите один класс.</p>
+      </div>
+    </section>
+  {% endif %}
+{% endblock %}
