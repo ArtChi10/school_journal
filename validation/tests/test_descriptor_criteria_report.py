@@ -112,7 +112,12 @@ class DescriptorCriteriaReportPayloadTests(TestCase):
         self.assertIn("Science", problems["values"][1])
         self.assertIn("Не заполнены", problems["values"][1])
         self.assertNotIn("4/6", problems["values"][1])
-        self.assertIn('=HYPERLINK("https://docs.google.com/spreadsheets/d/source/edit","Открыть")', problems["values"][1])
+        self.assertIn("Открыть", problems["values"][1])
+        self.assertNotIn('=HYPERLINK("https://docs.google.com/spreadsheets/d/source/edit","Открыть")', problems["values"][1])
+        self.assertEqual(
+            problems["hyperlinks"],
+            [{"row_index": 1, "column_index": ALL_SUBJECTS_HEADERS.index("Ссылка на таблицу"), "url": "https://docs.google.com/spreadsheets/d/source/edit"}],
+        )
 
 
 class DescriptorCriteriaReportFormattingTests(TestCase):
@@ -159,7 +164,11 @@ class DescriptorCriteriaReportFormattingTests(TestCase):
             self._subject_row(Оценки="Не применимо"),
         ]
 
-        requests = _format_requests_for_values(123, values)
+        requests = _format_requests_for_values(
+            123,
+            values,
+            [{"row_index": 1, "column_index": ALL_SUBJECTS_HEADERS.index("Ссылка на таблицу"), "url": "https://docs.google.com/spreadsheets/d/source/edit"}],
+        )
         colors = self._cell_colors(requests)
         header_requests = [
             request
@@ -171,12 +180,23 @@ class DescriptorCriteriaReportFormattingTests(TestCase):
         self.assertTrue(any("updateSheetProperties" in request for request in requests))
         self.assertTrue(any("autoResizeDimensions" in request for request in requests))
         self.assertTrue(any(request["repeatCell"]["cell"]["userEnteredFormat"]["textFormat"]["bold"] is True for request in header_requests))
-        self.assertIn(COLOR_GREEN, [request["repeatCell"]["cell"]["userEnteredFormat"]["backgroundColor"] for request in requests if "repeatCell" in request])
+        background_colors = [
+            request["repeatCell"]["cell"]["userEnteredFormat"]["backgroundColor"]
+            for request in requests
+            if request.get("repeatCell", {}).get("cell", {}).get("userEnteredFormat", {}).get("backgroundColor")
+        ]
+        self.assertIn(COLOR_GREEN, background_colors)
         self.assertEqual(colors[(1, ALL_SUBJECTS_HEADERS.index("Дескриптор"))], COLOR_GREEN)
         self.assertEqual(colors[(2, ALL_SUBJECTS_HEADERS.index("Статус"))], COLOR_RED)
         self.assertEqual(colors[(2, ALL_SUBJECTS_HEADERS.index("Оценки"))], COLOR_YELLOW)
         self.assertEqual(colors[(2, ALL_SUBJECTS_HEADERS.index("Критерии"))], COLOR_YELLOW)
         self.assertEqual(colors[(3, ALL_SUBJECTS_HEADERS.index("Оценки"))], COLOR_GRAY)
+        link_requests = [
+            request
+            for request in requests
+            if request.get("repeatCell", {}).get("cell", {}).get("userEnteredFormat", {}).get("textFormat", {}).get("link")
+        ]
+        self.assertEqual(link_requests[0]["repeatCell"]["cell"]["userEnteredFormat"]["textFormat"]["link"]["uri"], "https://docs.google.com/spreadsheets/d/source/edit")
 
     def test_write_payload_applies_formatting_after_values(self):
         service = Mock()
@@ -188,7 +208,13 @@ class DescriptorCriteriaReportFormattingTests(TestCase):
         values_service = spreadsheets.values.return_value
         values_service.batchClear.return_value.execute.return_value = {}
         values_service.batchUpdate.return_value.execute.return_value = {}
-        payload = [{"title": ALL_SUBJECTS_SHEET, "values": [ALL_SUBJECTS_HEADERS, self._subject_row(overall_status="problem")]}]
+        payload = [
+            {
+                "title": ALL_SUBJECTS_SHEET,
+                "values": [ALL_SUBJECTS_HEADERS, self._subject_row(Статус="Есть проблемы")],
+                "hyperlinks": [{"row_index": 1, "column_index": ALL_SUBJECTS_HEADERS.index("Ссылка на таблицу"), "url": "https://docs.google.com/spreadsheets/d/source/edit"}],
+            }
+        ]
 
         _write_payload(service, "spreadsheet123", payload)
 
@@ -197,11 +223,18 @@ class DescriptorCriteriaReportFormattingTests(TestCase):
         values_service.clear.assert_not_called()
         values_service.update.assert_not_called()
         self.assertEqual(values_service.batchClear.call_args.kwargs["body"]["ranges"], ["'All subjects'!A:Z"])
-        self.assertEqual(values_service.batchUpdate.call_args.kwargs["body"]["valueInputOption"], "USER_ENTERED")
+        self.assertEqual(values_service.batchUpdate.call_args.kwargs["body"]["valueInputOption"], "RAW")
         self.assertEqual(values_service.batchUpdate.call_args.kwargs["body"]["data"][0]["range"], "'All subjects'!A1")
         spreadsheets.batchUpdate.assert_called_once()
         body = spreadsheets.batchUpdate.call_args.kwargs["body"]
         self.assertTrue(body["requests"])
+        self.assertTrue(
+            any(
+                request.get("repeatCell", {}).get("cell", {}).get("userEnteredFormat", {}).get("textFormat", {}).get("link", {}).get("uri")
+                == "https://docs.google.com/spreadsheets/d/source/edit"
+                for request in body["requests"]
+            )
+        )
 
 
 class DescriptorCriteriaReportUpdateTests(TestCase):

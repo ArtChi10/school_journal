@@ -94,15 +94,6 @@ def _overall_status_label(value: Any) -> str:
     }.get(str(value or "").strip().lower(), str(value or "").strip())
 
 
-def _hyperlink_formula(url: Any, label: str = "Открыть") -> str:
-    clean_url = str(url or "").strip()
-    if not clean_url:
-        return ""
-    escaped_url = clean_url.replace('"', '""')
-    escaped_label = label.replace('"', '""')
-    return f'=HYPERLINK("{escaped_url}","{escaped_label}")'
-
-
 def _job_status_label(value: Any) -> str:
     return {
         "pending": "Ожидает",
@@ -124,12 +115,34 @@ def _report_value(row: dict, key: str) -> Any:
     if key == "overall_status":
         return _overall_status_label(value)
     if key == "sheet_url":
-        return _hyperlink_formula(value)
+        return "Открыть" if str(value or "").strip() else ""
     return _safe_value(value)
 
 
 def _rows_from_dicts(rows: list[dict], columns: list[tuple[str, str]]) -> list[list[Any]]:
     return [[label for _key, label in columns]] + [[_report_value(row, key) for key, _label in columns] for row in rows]
+
+
+def _hyperlink_specs_from_dicts(rows: list[dict], columns: list[tuple[str, str]]) -> list[dict[str, Any]]:
+    try:
+        column_index = [key for key, _label in columns].index("sheet_url")
+    except ValueError:
+        return []
+
+    specs = []
+    for row_index, row in enumerate(rows, start=1):
+        url = str(row.get("sheet_url") or "").strip()
+        if url:
+            specs.append({"row_index": row_index, "column_index": column_index, "url": url})
+    return specs
+
+
+def _report_payload_item(title: str, rows: list[dict]) -> dict[str, Any]:
+    return {
+        "title": title,
+        "values": _rows_from_dicts(rows, REPORT_COLUMNS),
+        "hyperlinks": _hyperlink_specs_from_dicts(rows, REPORT_COLUMNS),
+    }
 
 
 def _summary_values(job_run: JobRun, *, report_status: str = "", report_updated_at: str = "") -> list[list[Any]]:
@@ -189,14 +202,14 @@ def build_descriptor_criteria_report_payload(
                 report_updated_at=report_updated_at,
             ),
         },
-        {"title": PROBLEMS_SHEET, "values": _rows_from_dicts(problems, REPORT_COLUMNS)},
-        {"title": ALL_SUBJECTS_SHEET, "values": _rows_from_dicts(rows, REPORT_COLUMNS)},
+        _report_payload_item(PROBLEMS_SHEET, problems),
+        _report_payload_item(ALL_SUBJECTS_SHEET, rows),
     ]
 
     used_titles = {SUMMARY_SHEET, PROBLEMS_SHEET, ALL_SUBJECTS_SHEET}
     for class_code in sorted({str(row.get("class_code") or "").strip() for row in rows if row.get("class_code")}):
         class_rows = [row for row in rows if str(row.get("class_code") or "").strip() == class_code]
-        payload.append({"title": _sheet_title(class_code, used_titles), "values": _rows_from_dicts(class_rows, REPORT_COLUMNS)})
+        payload.append(_report_payload_item(_sheet_title(class_code, used_titles), class_rows))
 
     return payload
 
@@ -282,6 +295,30 @@ def _background_color_request(sheet_id: int, row_index: int, column_index: int, 
     }
 
 
+def _hyperlink_request(sheet_id: int, row_index: int, column_index: int, url: str) -> dict[str, Any]:
+    return {
+        "repeatCell": {
+            "range": {
+                "sheetId": sheet_id,
+                "startRowIndex": row_index,
+                "endRowIndex": row_index + 1,
+                "startColumnIndex": column_index,
+                "endColumnIndex": column_index + 1,
+            },
+            "cell": {
+                "userEnteredFormat": {
+                    "textFormat": {
+                        "foregroundColor": {"red": 0.07, "green": 0.33, "blue": 0.8},
+                        "underline": True,
+                        "link": {"uri": url},
+                    }
+                }
+            },
+            "fields": "userEnteredFormat.textFormat",
+        }
+    }
+
+
 def _header_format_requests(sheet_id: int, column_count: int) -> list[dict[str, Any]]:
     reset_column_count = max(column_count, 26)
     return [
@@ -353,7 +390,11 @@ def _status_color(header: str, value: Any, row: dict[str, Any]) -> dict[str, flo
     return None
 
 
-def _format_requests_for_values(sheet_id: int, values: list[list[Any]]) -> list[dict[str, Any]]:
+def _format_requests_for_values(
+    sheet_id: int,
+    values: list[list[Any]],
+    hyperlinks: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     if not values:
         return []
 
@@ -374,6 +415,8 @@ def _format_requests_for_values(sheet_id: int, values: list[list[Any]]) -> list[
             color = _status_color(header, value, row)
             if color:
                 requests.append(_background_color_request(sheet_id, row_index, column_index, color))
+    for link in hyperlinks or []:
+        requests.append(_hyperlink_request(sheet_id, int(link["row_index"]), int(link["column_index"]), str(link["url"])))
     return requests
 
 
@@ -383,7 +426,7 @@ def _apply_report_formatting(service, spreadsheet_id: str, payload: list[dict[st
         sheet_id = title_to_id.get(item["title"])
         if sheet_id is None:
             continue
-        requests.extend(_format_requests_for_values(sheet_id, item["values"]))
+        requests.extend(_format_requests_for_values(sheet_id, item["values"], item.get("hyperlinks", [])))
     if requests:
         service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={"requests": requests}).execute()
 
@@ -406,7 +449,7 @@ def _write_payload(service, spreadsheet_id: str, payload: list[dict[str, Any]]) 
     if data_to_update:
         service.spreadsheets().values().batchUpdate(
             spreadsheetId=spreadsheet_id,
-            body={"valueInputOption": "USER_ENTERED", "data": data_to_update},
+            body={"valueInputOption": "RAW", "data": data_to_update},
         ).execute()
     _apply_report_formatting(service, spreadsheet_id, payload, title_to_id)
 
