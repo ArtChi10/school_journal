@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 import re
+from datetime import timezone as datetime_timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from django.utils import timezone
 
@@ -22,12 +24,27 @@ _GOOGLE_SHEET_RE = re.compile(r"/spreadsheets/d/([a-zA-Z0-9-_]+)")
 SUMMARY_SHEET = "Summary"
 PROBLEMS_SHEET = "Problems"
 ALL_SUBJECTS_SHEET = "All subjects"
+TBILISI_TZ = ZoneInfo("Asia/Tbilisi")
 
 COLOR_GREEN = {"red": 0.85, "green": 0.94, "blue": 0.85}
 COLOR_YELLOW = {"red": 1.0, "green": 0.95, "blue": 0.8}
 COLOR_RED = {"red": 0.98, "green": 0.8, "blue": 0.8}
 COLOR_GRAY = {"red": 0.9, "green": 0.9, "blue": 0.9}
 COLOR_HEADER = {"red": 0.93, "green": 0.94, "blue": 0.96}
+MONTHS_RU = {
+    1: "января",
+    2: "февраля",
+    3: "марта",
+    4: "апреля",
+    5: "мая",
+    6: "июня",
+    7: "июля",
+    8: "августа",
+    9: "сентября",
+    10: "октября",
+    11: "ноября",
+    12: "декабря",
+}
 
 REPORT_COLUMNS = [
     ("class_code", "Класс"),
@@ -104,6 +121,16 @@ def _job_status_label(value: Any) -> str:
     }.get(str(value or "").strip().lower(), str(value or "").strip())
 
 
+def _format_tbilisi_datetime(value) -> str:
+    if value is None:
+        return ""
+    if timezone.is_naive(value):
+        value = timezone.make_aware(value, timezone=datetime_timezone.utc)
+    local_value = value.astimezone(TBILISI_TZ)
+    month = MONTHS_RU[local_value.month]
+    return f"{local_value.day} {month} {local_value.year}, {local_value:%H:%M:%S} (Тбилиси)"
+
+
 def _report_value(row: dict, key: str) -> Any:
     value = row.get(key)
     if key == "descriptor_status":
@@ -165,7 +192,7 @@ def _summary_values(job_run: JobRun, *, report_status: str = "", report_updated_
         ("Листов проверено", summary.get("sheets_checked", 0)),
         ("Листов пропущено", summary.get("sheets_skipped", 0)),
         ("Статус Google-отчета", report_status or report.get("status", "")),
-        ("Google-отчет обновлен", report_updated_at or report.get("updated_at", "")),
+        ("Google-отчет обновлен", report_updated_at or report.get("updated_at_display", "") or report.get("updated_at", "")),
     ]
     return [["Показатель", "Значение"], *[[key, _safe_value(value)] for key, value in rows]]
 
@@ -467,11 +494,12 @@ def update_descriptor_criteria_google_report(job_run: JobRun) -> dict[str, Any]:
         return report
 
     try:
-        updated_at = timezone.now().isoformat()
+        updated_at = timezone.now()
+        updated_at_display = _format_tbilisi_datetime(updated_at)
         payload = build_descriptor_criteria_report_payload(
             job_run,
             report_status="updated",
-            report_updated_at=updated_at,
+            report_updated_at=updated_at_display,
         )
         log_step(
             job_run=job_run,
@@ -485,7 +513,8 @@ def update_descriptor_criteria_google_report(job_run: JobRun) -> dict[str, Any]:
         report = {
             "status": "updated",
             "target_id": target.id,
-            "updated_at": updated_at,
+            "updated_at": updated_at.isoformat(),
+            "updated_at_display": updated_at_display,
             "sheets": [item["title"] for item in payload],
         }
         log_step(job_run=job_run, level=JobLog.Level.INFO, message="Report update succeeded", context=report)

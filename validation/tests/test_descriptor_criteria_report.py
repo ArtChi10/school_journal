@@ -1,3 +1,4 @@
+from datetime import datetime, timezone as datetime_timezone
 from unittest.mock import Mock, patch
 
 from django.test import TestCase
@@ -248,7 +249,9 @@ class DescriptorCriteriaReportUpdateTests(TestCase):
 
     @patch("validation.descriptor_criteria_report._write_payload")
     @patch("validation.descriptor_criteria_report._build_sheets_service", return_value=Mock())
-    def test_updates_existing_target(self, mocked_service, mocked_write):
+    @patch("validation.descriptor_criteria_report.timezone.now")
+    def test_updates_existing_target(self, mocked_now, mocked_service, mocked_write):
+        mocked_now.return_value = datetime(2026, 5, 6, 5, 39, 49, tzinfo=datetime_timezone.utc)
         target = DescriptorCriteriaReportTarget.objects.create(
             name="Report",
             google_sheet_url="https://docs.google.com/spreadsheets/d/report123/edit",
@@ -260,8 +263,13 @@ class DescriptorCriteriaReportUpdateTests(TestCase):
 
         self.assertEqual(report["status"], "updated")
         self.assertEqual(report["target_id"], target.id)
+        self.assertEqual(report["updated_at"], "2026-05-06T05:39:49+00:00")
+        self.assertEqual(report["updated_at_display"], "6 мая 2026, 09:39:49 (Тбилиси)")
         mocked_service.assert_called_once()
         mocked_write.assert_called_once()
+        payload = mocked_write.call_args.args[2]
+        summary_values = next(item["values"] for item in payload if item["title"] == SUMMARY_SHEET)
+        self.assertIn(["Google-отчет обновлен", "6 мая 2026, 09:39:49 (Тбилиси)"], summary_values)
         self.assertTrue(JobLog.objects.filter(job_run=job_run, message="Report update succeeded").exists())
 
     @patch("validation.descriptor_criteria_report._write_payload", side_effect=RuntimeError("insufficient scopes"))
