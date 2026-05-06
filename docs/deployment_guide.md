@@ -198,7 +198,7 @@ Configure these GitHub repository variables:
 | `DEPLOY_COMPOSE_FILE` | `docker-compose.server.yml` |
 | `DEPLOY_HEALTH_URL` | `http://195.54.178.243:16472/healthz` |
 
-The server currently uses a local `docker-compose.server.yml` with `8082:80` because another reverse proxy already owns port `80`. The external forwarded URL is `http://195.54.178.243:16472/`.
+The server currently uses a local `docker-compose.server.yml` with `8082:80` because another reverse proxy already owns port `80`. The external forwarded URL is `http://195.54.178.243:16472/`. During CD, this server compose file is regenerated from `docker-compose.prod.yml`, the port mapping is changed to `8082:80`, and the workflow fails if the `scheduler` service is missing.
 
 The deploy SSH user must be able to run `docker compose` on the server without an interactive password prompt. On Ubuntu this usually means adding the deploy user to the `docker` group and starting a new login session before running the workflow.
 
@@ -210,10 +210,14 @@ During deploy, the workflow runs these server-side commands inside `DEPLOY_PATH`
 git fetch --all --prune
 git checkout main
 git pull --ff-only origin main
+cp docker-compose.prod.yml "$DEPLOY_COMPOSE_FILE"
+sed -i 's/"80:80"/"8082:80"/' "$DEPLOY_COMPOSE_FILE"
+docker compose -f "$DEPLOY_COMPOSE_FILE" config --services
 docker compose -f "$DEPLOY_COMPOSE_FILE" pull || true
 docker compose -f "$DEPLOY_COMPOSE_FILE" up -d --build
 docker compose -f "$DEPLOY_COMPOSE_FILE" ps
 docker compose -f "$DEPLOY_COMPOSE_FILE" logs --tail=100 web
+docker compose -f "$DEPLOY_COMPOSE_FILE" logs --tail=100 scheduler
 ```
 
 After SSH deploy, the workflow checks `DEPLOY_HEALTH_URL` with `curl -fsS`. A failed health check fails the workflow.

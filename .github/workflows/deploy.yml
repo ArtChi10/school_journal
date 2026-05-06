@@ -134,11 +134,20 @@ jobs:
           git fetch --all --prune
           git checkout main
           git pull --ff-only origin main
+          if [ "$DEPLOY_COMPOSE_FILE" = "docker-compose.server.yml" ]; then
+            cp docker-compose.prod.yml "$DEPLOY_COMPOSE_FILE"
+            sed -i 's/"80:80"/"8082:80"/' "$DEPLOY_COMPOSE_FILE"
+          fi
+          if ! docker compose -f "$DEPLOY_COMPOSE_FILE" config --services | grep -qx scheduler; then
+            echo "scheduler service is missing in $DEPLOY_COMPOSE_FILE"
+            exit 1
+          fi
           docker compose -f "$DEPLOY_COMPOSE_FILE" pull || true
           docker compose -f "$DEPLOY_COMPOSE_FILE" up -d --build
           docker compose -f "$DEPLOY_COMPOSE_FILE" config --services
           docker compose -f "$DEPLOY_COMPOSE_FILE" ps
           docker compose -f "$DEPLOY_COMPOSE_FILE" logs --tail=100 web
+          docker compose -f "$DEPLOY_COMPOSE_FILE" logs --tail=100 scheduler
           if docker compose -f "$DEPLOY_COMPOSE_FILE" config --services | grep -qx proxy; then
             docker compose -f "$DEPLOY_COMPOSE_FILE" logs --tail=100 proxy
           elif docker compose -f "$DEPLOY_COMPOSE_FILE" config --services | grep -qx caddy; then
