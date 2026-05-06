@@ -57,6 +57,8 @@ Expected production paths:
 
 Descriptor/criteria Google report export rewrites an existing Google Spreadsheet after each check run. Configure the target URL in the admin panel at `Классы и таблицы` -> `Google-отчет`. The OAuth token used by the app must include Google Sheets write access. If the report update fails with insufficient scopes, recreate `token.json` through the local Google OAuth flow and copy it into the production credentials volume again. See `docs/google_report.md`.
 
+AI criteria review can also rewrite a separate Google Spreadsheet after each AI run. Configure it in the admin panel at `AI-вычитка критериев` -> `Google AI-отчет`. This report is separate from the descriptor/criteria/grades report and uses class sheets with AI verdicts and rewrite suggestions.
+
 ## Start Production Stack
 
 Run Docker Compose with the explicit env file:
@@ -159,6 +161,21 @@ docker compose --env-file .env.production -f docker-compose.prod.yml logs --tail
 ```
 
 If the server uses a local `docker-compose.server.yml`, copy the committed `scheduler` service into that file before relying on automatic checks.
+
+## AI Criteria Review Report
+
+The `AI-вычитка критериев` page runs a separate AI review workflow. It collects non-empty, non-numeric criteria from subject sheets, skips tutor/service sheets, sends one AI batch request per class, and writes results to `JobRun.result_json`.
+
+The AI workflow requires the OpenAI environment used by the existing criteria pipeline, usually `OPENAI_API_KEY`. It does not send Telegram notifications.
+
+Configure the Google target in the admin panel:
+
+- Open `AI-вычитка критериев`.
+- Open `Google AI-отчет`.
+- Paste a separate Google Spreadsheet URL.
+- Keep the target active.
+
+The OAuth token used by the app must include Google Sheets write access. The exported spreadsheet contains `Summary`, `Problems`, `All criteria`, and one sheet per class. Summary timestamps use Tbilisi time in a human-readable format.
 
 ## GitHub Actions SSH Deploy
 

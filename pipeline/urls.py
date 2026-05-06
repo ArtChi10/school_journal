@@ -1,6 +1,8 @@
 from django.urls import path
 
 from .views import (
+    ai_criteria_report_target,
+    ai_criteria_review,
     criteria_failures,
     criterion_detail,
     override_criterion_valid,
@@ -20,6 +22,8 @@ app_name = "pipeline"
 
 urlpatterns = [
     path("criteria-table/", criteria_table, name="criteria_table"),
+    path("ai-criteria-review/", ai_criteria_review, name="ai_criteria_review"),
+    path("ai-criteria-report/", ai_criteria_report_target, name="ai_criteria_report_target"),
     path("criteria-failures/", criteria_failures, name="criteria_failures"),
     path("criteria/<int:pk>/", criterion_detail, name="criterion_detail"),
     path("criteria/<int:pk>/override-valid/", override_criterion_valid, name="override_criterion_valid"),

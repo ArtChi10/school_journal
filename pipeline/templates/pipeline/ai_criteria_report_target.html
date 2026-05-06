@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block page_title %}Google AI-отчет критериев{% endblock %}
+{% block page_heading %}Google AI-отчет критериев{% endblock %}
+
+{% block breadcrumbs %}
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0">
+      <li class="breadcrumb-item"><a href="{% url 'pipeline:ai_criteria_review' %}">AI-вычитка критериев</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Google AI-отчет</li>
+    </ol>
+  </nav>
+{% endblock %}
+
+{% block page_actions %}
+  <a class="btn btn-outline-secondary" href="{% url 'pipeline:ai_criteria_review' %}">Назад к AI-вычитке</a>
+{% endblock %}
+
+{% block content %}
+  <section class="card">
+    <div class="card-body">
+      <form method="post" class="row g-3">
+        {% csrf_token %}
+        <div class="col-12 col-lg-6">
+          <label class="form-label" for="{{ form.name.id_for_label }}">{{ form.name.label }}</label>
+          {{ form.name }}
+          {% if form.name.errors %}<div class="text-danger small mt-1">{{ form.name.errors }}</div>{% endif %}
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="{{ form.google_sheet_url.id_for_label }}">{{ form.google_sheet_url.label }}</label>
+          {{ form.google_sheet_url }}
+          {% if form.google_sheet_url.help_text %}<div class="form-text">{{ form.google_sheet_url.help_text }}</div>{% endif %}
+          {% if form.google_sheet_url.errors %}<div class="text-danger small mt-1">{{ form.google_sheet_url.errors }}</div>{% endif %}
+        </div>
+        <div class="col-12">
+          <div class="form-check">
+            {{ form.is_active }}
+            <label class="form-check-label" for="{{ form.is_active.id_for_label }}">{{ form.is_active.label }}</label>
+          </div>
+        </div>
+        <div class="col-12 d-flex gap-2">
+          <button class="btn btn-primary" type="submit">Сохранить</button>
+          {% if target %}
+            <a class="btn btn-outline-secondary" href="{{ target.google_sheet_url }}" target="_blank" rel="noopener">Открыть текущий отчет</a>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+  </section>
+{% endblock %}

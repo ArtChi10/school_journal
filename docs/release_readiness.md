@@ -39,6 +39,10 @@ Use this checklist before promoting the production Docker Compose stack.
 - [ ] Автопроверка toggle starts scheduled descriptor, criteria, and grades checks every 90 minutes.
 - [ ] Scheduled descriptor checks do not overlap existing pending/running checks.
 - [ ] Scheduled checks do not run AI or send Telegram notifications.
+- [ ] If AI criteria review is used, `OPENAI_API_KEY` is configured in production.
+- [ ] If AI criteria Google report export is used, an active AI report target is configured separately from the descriptor report.
+- [ ] AI criteria review sends one batch AI request per class and skips empty/numeric-only criteria.
+- [ ] AI criteria review does not send Telegram notifications.
 - [ ] Future task: document and test PostgreSQL backup and restore.
 - [ ] Future task: add HTTPS/TLS configuration.
 - [ ] Future task: add automated rollback for CD.

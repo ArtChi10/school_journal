@@ -5,12 +5,16 @@ from django.core.paginator import Paginator
 from django.db.models import Count, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from admin_panel.authz import permission_required_403
+from jobs.models import JobRun
+from journal_links.models import ClassSheetLink
+from pipeline.ai_criteria_review import JOB_TYPE as AI_CRITERIA_REVIEW_JOB_TYPE, enqueue_ai_criteria_class_review_job
 from pipeline.audit import log_criterion_event
-from pipeline.forms import ParentContactForm, ParentContactsImportForm, ValidCriterionTemplateForm
-from pipeline.models import CriterionEntry, CriterionReviewEvent, ParentContact, ValidCriterionTemplate
+from pipeline.forms import AICriteriaReportTargetForm, ParentContactForm, ParentContactsImportForm, ValidCriterionTemplateForm
+from pipeline.models import AICriteriaReportTarget, CriterionEntry, CriterionReviewEvent, ParentContact, ValidCriterionTemplate
 from pipeline.parent_contacts import import_parent_contacts_csv
 
 
@@ -24,6 +28,44 @@ def _parse_non_empty(value: str | None) -> str | None:
 
 def _is_admin_role(user) -> bool:
     return bool(user.is_superuser or user.groups.filter(name="admin").exists())
+
+
+def _latest_ai_criteria_review_run() -> JobRun | None:
+    return (
+        JobRun.objects.filter(job_type=AI_CRITERIA_REVIEW_JOB_TYPE)
+        .order_by("-started_at", "-id")
+        .first()
+    )
+
+
+def _ai_criteria_rows(job_run: JobRun | None) -> list[dict]:
+    if job_run is None or not isinstance(job_run.result_json, dict):
+        return []
+    rows = job_run.result_json.get("rows", [])
+    return [row for row in rows if isinstance(row, dict)]
+
+
+def _ai_criteria_filter_options(rows: list[dict]) -> dict[str, list[str]]:
+    return {
+        "classes": sorted({str(row.get("class_code") or "") for row in rows if row.get("class_code")}),
+        "teachers": sorted({str(row.get("teacher_name") or "") for row in rows if row.get("teacher_name")}),
+        "statuses": sorted({str(row.get("ai_verdict") or "") for row in rows if row.get("ai_verdict")}),
+    }
+
+
+def _filter_ai_criteria_rows(rows: list[dict], request) -> list[dict]:
+    class_code = _parse_non_empty(request.GET.get("class_code"))
+    teacher_name = _parse_non_empty(request.GET.get("teacher_name"))
+    ai_verdict = _parse_non_empty(request.GET.get("ai_verdict"))
+
+    filtered = rows
+    if class_code:
+        filtered = [row for row in filtered if str(row.get("class_code", "")) == class_code]
+    if teacher_name:
+        filtered = [row for row in filtered if str(row.get("teacher_name", "")) == teacher_name]
+    if ai_verdict:
+        filtered = [row for row in filtered if str(row.get("ai_verdict", "")) == ai_verdict]
+    return filtered
 
 
 @login_required
@@ -83,6 +125,84 @@ def criteria_table(request):
             "querystring": preserved_query.urlencode(),
         },
     )
+
+
+@login_required
+@permission_required_403("pipeline.view_criterionentry", message="Доступ запрещён: нет прав на просмотр AI-вычитки критериев.")
+def ai_criteria_review(request):
+    active_class_codes = list(
+        ClassSheetLink.objects.filter(is_active=True)
+        .values_list("class_code", flat=True)
+        .distinct()
+        .order_by("class_code")
+    )
+
+    if request.method == "POST":
+        if not request.user.has_perm("jobs.run_full_pipeline"):
+            return HttpResponse("forbidden", status=403)
+        class_code = _parse_non_empty(request.POST.get("class_code"))
+        job_run = enqueue_ai_criteria_class_review_job(
+            class_code=class_code,
+            all_active=class_code is None,
+            initiated_by=request.user if request.user.is_authenticated else None,
+        )
+        messages.success(request, "AI-вычитка критериев запущена.")
+        return redirect(f"{reverse('pipeline:ai_criteria_review')}?run_id={job_run.id}")
+
+    requested_run_id = _parse_non_empty(request.GET.get("run_id"))
+    if requested_run_id:
+        job_run = get_object_or_404(JobRun, id=requested_run_id, job_type=AI_CRITERIA_REVIEW_JOB_TYPE)
+    else:
+        job_run = _latest_ai_criteria_review_run()
+
+    rows = _ai_criteria_rows(job_run)
+    summary = {}
+    if job_run and isinstance(job_run.result_json, dict):
+        possible_summary = job_run.result_json.get("summary", {})
+        if isinstance(possible_summary, dict):
+            summary = possible_summary
+
+    return render(
+        request,
+        "pipeline/ai_criteria_review.html",
+        {
+            "class_options": active_class_codes,
+            "filter_options": _ai_criteria_filter_options(rows),
+            "filters": {
+                "class_code": request.GET.get("class_code", ""),
+                "teacher_name": request.GET.get("teacher_name", ""),
+                "ai_verdict": request.GET.get("ai_verdict", ""),
+            },
+            "job_run": job_run,
+            "summary": summary,
+            "rows": _filter_ai_criteria_rows(rows, request),
+        },
+    )
+
+
+@login_required
+@permission_required_403(
+    "pipeline.change_criterionentry",
+    message="Доступ запрещён: нельзя изменять Google AI-отчет критериев.",
+)
+def ai_criteria_report_target(request):
+    target = AICriteriaReportTarget.objects.order_by("-is_active", "-updated_at", "-id").first()
+
+    if request.method == "POST":
+        form = AICriteriaReportTargetForm(request.POST, instance=target)
+        if form.is_valid():
+            target = form.save()
+            messages.success(request, "Google AI-отчет критериев сохранен.")
+            return redirect("pipeline:ai_criteria_report_target")
+    else:
+        form = AICriteriaReportTargetForm(instance=target)
+
+    return render(
+        request,
+        "pipeline/ai_criteria_report_target.html",
+        {"form": form, "target": target},
+    )
+
 
 @login_required
 @permission_required_403(

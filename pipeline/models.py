@@ -115,6 +115,25 @@ class ValidCriterionTemplate(models.Model):
     def __str__(self) -> str:
         return self.name
 
+
+class AICriteriaReportTarget(models.Model):
+    name = models.CharField(max_length=255, default="AI criteria review report")
+    google_sheet_url = models.URLField(max_length=500)
+    is_active = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-is_active", "-updated_at", "name"]
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.is_active:
+            AICriteriaReportTarget.objects.exclude(pk=self.pk).update(is_active=False)
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class ParentContact(models.Model):
     parallel = models.PositiveIntegerField()
     class_code = models.CharField(max_length=16, blank=True, default="")
