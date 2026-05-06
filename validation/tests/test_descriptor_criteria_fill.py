@@ -8,7 +8,7 @@ from django.urls import reverse
 from openpyxl import Workbook
 
 from jobs.models import JobRun
-from journal_links.models import ClassSheetLink, DescriptorCriteriaReportTarget
+from journal_links.models import ClassSheetLink, DescriptorCriteriaCheckSchedule, DescriptorCriteriaReportTarget
 from validation.descriptor_criteria_fill import (
     JOB_TYPE,
     check_workbook_descriptor_criteria,
@@ -326,7 +326,7 @@ class DescriptorCriteriaFillJobTests(TestCase):
             job_run = enqueue_descriptor_criteria_fill_check_job(class_code="7A")
 
         self.assertEqual(job_run.status, JobRun.Status.PENDING)
-        self.assertEqual(job_run.params_json, {"class_code": "7A", "all_active": True})
+        self.assertEqual(job_run.params_json, {"class_code": "7A", "all_active": True, "trigger": "manual"})
         self.assertTrue(job_run.logs.filter(message="Descriptor/criteria fill check queued").exists())
         thread_cls.assert_called_once()
         thread_cls.return_value.start.assert_called_once()
@@ -349,7 +349,7 @@ class DescriptorCriteriaFillViewTests(TestCase):
     def test_list_links_contains_descriptor_criteria_check_button(self):
         response = self.client.get(reverse("journal_links:list_links"))
 
-        self.assertContains(response, "Проверить дескрипторы и критерии")
+        self.assertContains(response, "Проверить дескрипторы, критерии и оценки")
 
     def test_post_runs_check_for_selected_class(self):
         fake_job = JobRun.objects.create(job_type=JOB_TYPE, result_json={"summary": {}, "rows": []})
@@ -365,7 +365,45 @@ class DescriptorCriteriaFillViewTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertIn(str(fake_job.id), response.url)
-        mocked.assert_called_once_with(class_code="7A", all_active=False, initiated_by=self.user)
+        mocked.assert_called_once_with(class_code="7A", all_active=False, initiated_by=self.user, trigger="manual")
+
+    def test_run_now_works_when_schedule_disabled(self):
+        schedule = DescriptorCriteriaCheckSchedule.load()
+        schedule.is_enabled = False
+        schedule.save()
+        fake_job = JobRun.objects.create(job_type=JOB_TYPE, result_json={"summary": {}, "rows": []})
+
+        with patch(
+            "journal_links.views.enqueue_descriptor_criteria_fill_check_job",
+            return_value=fake_job,
+        ) as mocked:
+            response = self.client.post(
+                reverse("journal_links:descriptor_criteria_fill_check"),
+                {"action": "run_now"},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(str(fake_job.id), response.url)
+        mocked.assert_called_once_with(class_code=None, all_active=True, initiated_by=self.user, trigger="manual")
+
+    def test_schedule_toggle_saves_enabled_state(self):
+        response = self.client.post(
+            reverse("journal_links:descriptor_criteria_fill_check"),
+            {"action": "save_schedule", "is_enabled": "on"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        schedule = DescriptorCriteriaCheckSchedule.load()
+        self.assertTrue(schedule.is_enabled)
+        self.assertEqual(schedule.updated_by, self.user)
+        self.assertIsNotNone(schedule.next_run_at)
+
+    def test_schedule_block_renders(self):
+        response = self.client.get(reverse("journal_links:descriptor_criteria_fill_check"))
+
+        self.assertContains(response, "Автопроверка дескрипторов, критериев и оценок")
+        self.assertContains(response, "Включить автопроверку")
+        self.assertContains(response, "Запустить сейчас")
 
     def test_page_renders_summary_table_and_filters(self):
         job_run = JobRun.objects.create(

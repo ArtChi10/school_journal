@@ -20,6 +20,7 @@ Use this checklist before promoting the production Docker Compose stack.
 - [ ] `docker-entrypoint.sh` is executable before building the production image.
 - [ ] `db` container is healthy.
 - [ ] `web` container is healthy.
+- [ ] `scheduler` container is running when automatic descriptor checks are needed.
 - [ ] `proxy` container is running.
 - [ ] HTTP smoke URL `/` opens.
 - [ ] HTTP smoke URL `/links/` opens.
@@ -34,6 +35,10 @@ Use this checklist before promoting the production Docker Compose stack.
 - [ ] GitHub Actions CD uses `docker-compose.server.yml` and does not overwrite `.env.production`.
 - [ ] GitHub Actions CD health check passes against the forwarded HTTP `/healthz` URL.
 - [ ] If descriptor/criteria Google report export is used, an active report target is configured and the OAuth token has Google Sheets write scope.
+- [ ] Descriptor/criteria scheduler worker is present in the active compose file before enabling автопроверка.
+- [ ] Автопроверка toggle starts scheduled descriptor, criteria, and grades checks every 90 minutes.
+- [ ] Scheduled descriptor checks do not overlap existing pending/running checks.
+- [ ] Scheduled checks do not run AI or send Telegram notifications.
 - [ ] Future task: document and test PostgreSQL backup and restore.
 - [ ] Future task: add HTTPS/TLS configuration.
 - [ ] Future task: add automated rollback for CD.

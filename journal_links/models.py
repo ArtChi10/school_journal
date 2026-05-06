@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 
 
@@ -38,3 +39,42 @@ class DescriptorCriteriaReportTarget(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class DescriptorCriteriaCheckSchedule(models.Model):
+    is_enabled = models.BooleanField(default=False)
+    interval_minutes = models.PositiveIntegerField(default=90)
+    last_started_at = models.DateTimeField(null=True, blank=True)
+    last_finished_at = models.DateTimeField(null=True, blank=True)
+    next_run_at = models.DateTimeField(null=True, blank=True)
+    last_job_run = models.ForeignKey(
+        "jobs.JobRun",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+
+    class Meta:
+        verbose_name = "Descriptor criteria check schedule"
+        verbose_name_plural = "Descriptor criteria check schedule"
+
+    @classmethod
+    def load(cls) -> "DescriptorCriteriaCheckSchedule":
+        schedule, _created = cls.objects.get_or_create(pk=1)
+        return schedule
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return "Descriptor criteria check schedule"

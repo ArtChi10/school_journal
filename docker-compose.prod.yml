@@ -45,6 +45,34 @@ services:
       retries: 5
       start_period: 30s
 
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: python manage.py run_descriptor_criteria_scheduler
+    env_file:
+      - .env.production
+    environment:
+      DJANGO_DEBUG: "False"
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      DJANGO_STATIC_ROOT: /app/staticfiles
+      DJANGO_MEDIA_ROOT: /app/media
+      APP_LOG_FILE: /app/logs/app.log
+      APP_JOB_ERROR_LOG_FILE: /app/logs/jobs_errors.log
+      GOOGLE_OAUTH_CLIENT_SECRET_PATH: /app/creds/google/client_secret.json
+      GOOGLE_OAUTH_TOKEN_PATH: /app/creds/google/token.json
+      GOOGLE_SERVICE_ACCOUNT_JSON_PATH: /app/creds/service_account.json
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - static_data:/app/staticfiles
+      - media_data:/app/media
+      - logs_data:/app/logs
+      - creds_data:/app/creds
+
   proxy:
     image: caddy:2-alpine
     restart: unless-stopped

@@ -2,6 +2,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 from admin_panel.authz import permission_required_403
@@ -21,8 +22,8 @@ from validation.descriptor_criteria_fill import (
 )
 from validation.job_runner import run_check_missing_data_job, run_validation_job
 
-from .forms import ClassSheetLinkForm, DescriptorCriteriaReportTargetForm
-from .models import ClassSheetLink, DescriptorCriteriaReportTarget
+from .forms import ClassSheetLinkForm, DescriptorCriteriaCheckScheduleForm, DescriptorCriteriaReportTargetForm
+from .models import ClassSheetLink, DescriptorCriteriaCheckSchedule, DescriptorCriteriaReportTarget
 
 
 def _safe_next_url(request, raw_url: str | None = None) -> str:
@@ -132,16 +133,36 @@ def edit_link(request, pk):
 def descriptor_criteria_fill_check(request):
     active_links = list(ClassSheetLink.objects.filter(is_active=True).order_by("class_code", "id"))
     class_options = sorted({link.class_code for link in active_links})
+    schedule = DescriptorCriteriaCheckSchedule.load()
 
     if request.method == "POST":
-        class_code = _non_empty(request.POST.get("class_code")) or None
-        job_run = enqueue_descriptor_criteria_fill_check_job(
-            class_code=class_code,
-            all_active=class_code is None,
-            initiated_by=request.user if request.user.is_authenticated else None,
-        )
-        messages.success(request, "Проверка дескрипторов и критериев запущена.")
-        return redirect(f"{reverse('journal_links:descriptor_criteria_fill_check')}?run_id={job_run.id}")
+        action = _non_empty(request.POST.get("action")) or "run_check"
+        if action == "save_schedule":
+            was_enabled = schedule.is_enabled
+            schedule_form = DescriptorCriteriaCheckScheduleForm(request.POST, instance=schedule)
+            if schedule_form.is_valid():
+                schedule = schedule_form.save(commit=False)
+                schedule.updated_by = request.user if request.user.is_authenticated else None
+                if schedule.is_enabled and (not was_enabled or schedule.next_run_at is None):
+                    schedule.next_run_at = timezone.now()
+                schedule.save()
+                messages.success(request, "Настройки автопроверки сохранены.")
+                return redirect("journal_links:descriptor_criteria_fill_check")
+        else:
+            if action == "run_now":
+                class_code = None
+            else:
+                class_code = _non_empty(request.POST.get("class_code")) or None
+            job_run = enqueue_descriptor_criteria_fill_check_job(
+                class_code=class_code,
+                all_active=class_code is None,
+                initiated_by=request.user if request.user.is_authenticated else None,
+                trigger="manual",
+            )
+            messages.success(request, "Проверка дескрипторов, критериев и оценок запущена.")
+            return redirect(f"{reverse('journal_links:descriptor_criteria_fill_check')}?run_id={job_run.id}")
+    else:
+        schedule_form = DescriptorCriteriaCheckScheduleForm(instance=schedule)
 
     requested_run_id = _non_empty(request.GET.get("run_id"))
     job_run = None
@@ -173,6 +194,8 @@ def descriptor_criteria_fill_check(request):
             "job_run": job_run,
             "summary": summary,
             "rows": filtered_rows,
+            "schedule": schedule,
+            "schedule_form": schedule_form,
         },
     )
 

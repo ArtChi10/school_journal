@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block page_title %}Проверка дескрипторов и критериев{% endblock %}
-{% block page_heading %}Проверка дескрипторов и критериев{% endblock %}
+{% block page_title %}Проверка дескрипторов, критериев и оценок{% endblock %}
+{% block page_heading %}Проверка дескрипторов, критериев и оценок{% endblock %}
 {% block extra_head %}
   {% if job_run.status == "pending" or job_run.status == "running" %}
     <meta http-equiv="refresh" content="10">
@@ -11,7 +11,7 @@
   <nav aria-label="breadcrumb" class="mb-3">
     <ol class="breadcrumb mb-0">
       <li class="breadcrumb-item"><a href="{% url 'journal_links:list_links' %}">Классы и таблицы</a></li>
-      <li class="breadcrumb-item active" aria-current="page">Дескрипторы и критерии</li>
+      <li class="breadcrumb-item active" aria-current="page">Дескрипторы, критерии и оценки</li>
     </ol>
   </nav>
 {% endblock %}
@@ -31,6 +31,7 @@
     <div class="card-body">
       <form method="post" class="row g-3 align-items-end">
         {% csrf_token %}
+        <input type="hidden" name="action" value="run_check">
         <div class="col-12 col-md-6 col-xl-4">
           <label class="form-label" for="id_run_class_code">Класс</label>
           <select id="id_run_class_code" name="class_code" class="form-select">
@@ -41,9 +42,51 @@
           </select>
         </div>
         <div class="col-12 col-md-auto">
-          <button class="btn btn-primary" type="submit">Проверить дескрипторы и критерии</button>
+          <button class="btn btn-primary" type="submit">Проверить дескрипторы, критерии и оценки</button>
         </div>
       </form>
+    </div>
+  </section>
+
+  <section class="card mb-4">
+    <div class="card-body">
+      <div class="d-flex flex-column flex-xl-row justify-content-between gap-3">
+        <div>
+          <h2 class="h5 mb-3">Автопроверка дескрипторов, критериев и оценок</h2>
+          <dl class="row mb-0">
+            <dt class="col-sm-5">Интервал</dt>
+            <dd class="col-sm-7">{{ schedule.interval_minutes }} минут</dd>
+            <dt class="col-sm-5">Последний запуск</dt>
+            <dd class="col-sm-7">{{ schedule.last_started_at|default:"—" }}</dd>
+            <dt class="col-sm-5">Следующий запуск</dt>
+            <dd class="col-sm-7">{{ schedule.next_run_at|default:"—" }}</dd>
+            <dt class="col-sm-5">Последний JobRun</dt>
+            <dd class="col-sm-7">
+              {% if schedule.last_job_run %}
+                <a href="{% url 'job_run_detail' schedule.last_job_run.id %}">{{ schedule.last_job_run.status }}</a>
+              {% else %}
+                —
+              {% endif %}
+            </dd>
+          </dl>
+        </div>
+        <div class="d-flex flex-column gap-3" style="min-width: 280px;">
+          <form method="post" class="d-flex flex-column gap-3">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_schedule">
+            <div class="form-check form-switch">
+              {{ schedule_form.is_enabled }}
+              <label class="form-check-label" for="{{ schedule_form.is_enabled.id_for_label }}">Включить автопроверку</label>
+            </div>
+            <button class="btn btn-outline-primary" type="submit">Сохранить</button>
+          </form>
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="run_now">
+            <button class="btn btn-primary w-100" type="submit">Запустить сейчас</button>
+          </form>
+        </div>
+      </div>
     </div>
   </section>
 

@@ -1,7 +1,7 @@
 from django import forms
 from urllib.parse import urlparse
 
-from .models import ClassSheetLink, DescriptorCriteriaReportTarget
+from .models import ClassSheetLink, DescriptorCriteriaCheckSchedule, DescriptorCriteriaReportTarget
 
 
 def validate_google_sheet_url(url: str) -> str:
@@ -105,3 +105,16 @@ class DescriptorCriteriaReportTargetForm(forms.ModelForm):
         self.fields["name"].widget.attrs.setdefault("class", "form-control")
         self.fields["google_sheet_url"].widget.attrs.setdefault("class", "form-control")
         self.fields["is_active"].widget.attrs.setdefault("class", "form-check-input")
+
+
+class DescriptorCriteriaCheckScheduleForm(forms.ModelForm):
+    class Meta:
+        model = DescriptorCriteriaCheckSchedule
+        fields = ["is_enabled"]
+        labels = {
+            "is_enabled": "Включить автопроверку",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["is_enabled"].widget.attrs.setdefault("class", "form-check-input")

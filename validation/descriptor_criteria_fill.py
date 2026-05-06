@@ -23,6 +23,22 @@ class DescriptorCriteriaFillReadError(ValueError):
     """Raised when a workbook cannot be read for descriptor/criteria checks."""
 
 
+def _build_job_params(
+    *,
+    class_code: str | None,
+    all_active: bool,
+    trigger: str,
+    schedule_id: int | None = None,
+    interval_minutes: int | None = None,
+) -> dict:
+    params = {"class_code": class_code, "all_active": all_active, "trigger": trigger}
+    if schedule_id is not None:
+        params["schedule_id"] = schedule_id
+    if interval_minutes is not None:
+        params["interval_minutes"] = interval_minutes
+    return params
+
+
 def _is_empty(value: Any) -> bool:
     return value is None or str(value).strip() == ""
 
@@ -327,8 +343,17 @@ def enqueue_descriptor_criteria_fill_check_job(
     class_code: str | None = None,
     all_active: bool = True,
     initiated_by=None,
+    trigger: str = "manual",
+    schedule_id: int | None = None,
+    interval_minutes: int | None = None,
 ) -> JobRun:
-    params = {"class_code": class_code, "all_active": all_active}
+    params = _build_job_params(
+        class_code=class_code,
+        all_active=all_active,
+        trigger=trigger,
+        schedule_id=schedule_id,
+        interval_minutes=interval_minutes,
+    )
     job_run = JobRun.objects.create(
         job_type=JOB_TYPE,
         status=JobRun.Status.PENDING,
@@ -344,18 +369,32 @@ def enqueue_descriptor_criteria_fill_check_job(
     )
     thread = threading.Thread(
         target=_run_descriptor_criteria_fill_check_thread,
-        args=(str(job_run.id), class_code, all_active),
+        args=(str(job_run.id), class_code, all_active, trigger, schedule_id, interval_minutes),
         daemon=True,
     )
     thread.start()
     return job_run
 
 
-def _run_descriptor_criteria_fill_check_thread(job_run_id: str, class_code: str | None, all_active: bool) -> None:
+def _run_descriptor_criteria_fill_check_thread(
+    job_run_id: str,
+    class_code: str | None,
+    all_active: bool,
+    trigger: str,
+    schedule_id: int | None,
+    interval_minutes: int | None,
+) -> None:
     close_old_connections()
     try:
         job_run = JobRun.objects.get(id=job_run_id)
-        run_descriptor_criteria_fill_check_job(class_code=class_code, all_active=all_active, job_run=job_run)
+        run_descriptor_criteria_fill_check_job(
+            class_code=class_code,
+            all_active=all_active,
+            job_run=job_run,
+            trigger=trigger,
+            schedule_id=schedule_id,
+            interval_minutes=interval_minutes,
+        )
     except Exception as exc:  # noqa: BLE001
         try:
             job_run = JobRun.objects.get(id=job_run_id)
@@ -381,9 +420,18 @@ def run_descriptor_criteria_fill_check_job(
     all_active: bool = True,
     initiated_by=None,
     job_run: JobRun | None = None,
+    trigger: str = "manual",
+    schedule_id: int | None = None,
+    interval_minutes: int | None = None,
 ) -> JobRun:
     links = _collect_links(class_code=class_code, all_active=all_active)
-    params = {"class_code": class_code, "all_active": all_active}
+    params = _build_job_params(
+        class_code=class_code,
+        all_active=all_active,
+        trigger=trigger,
+        schedule_id=schedule_id,
+        interval_minutes=interval_minutes,
+    )
     if job_run is None:
         job_run = JobRun.objects.create(
             job_type=JOB_TYPE,

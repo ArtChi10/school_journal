@@ -79,9 +79,11 @@ The stack starts:
 
 - `db`: PostgreSQL with persistent `postgres_data`
 - `web`: Django app behind Gunicorn
+- `scheduler`: descriptor, criteria, and grades check worker
 - `proxy`: Caddy HTTP reverse proxy on port `80`
 
 The `web` service waits for a healthy PostgreSQL service before starting.
+The `scheduler` service uses the same image and credentials volume as `web`, but runs only `python manage.py run_descriptor_criteria_scheduler`.
 
 ## Check Containers And Logs
 
@@ -89,6 +91,7 @@ The `web` service waits for a healthy PostgreSQL service before starting.
 docker compose --env-file .env.production -f docker-compose.prod.yml ps
 docker compose --env-file .env.production -f docker-compose.prod.yml logs --tail=100 db
 docker compose --env-file .env.production -f docker-compose.prod.yml logs --tail=100 web
+docker compose --env-file .env.production -f docker-compose.prod.yml logs --tail=100 scheduler
 docker compose --env-file .env.production -f docker-compose.prod.yml logs --tail=100 proxy
 ```
 
@@ -96,6 +99,7 @@ Expected state:
 
 - `db` is healthy.
 - `web` is healthy.
+- `scheduler` is running.
 - `proxy` is running.
 - No migration, static collection, or startup errors appear in `web` logs.
 
@@ -122,11 +126,39 @@ Expected results:
 ## Stop Or Restart
 
 ```bash
-docker compose --env-file .env.production -f docker-compose.prod.yml restart web proxy
+docker compose --env-file .env.production -f docker-compose.prod.yml restart web scheduler proxy
 docker compose --env-file .env.production -f docker-compose.prod.yml down
 ```
 
 Do not remove Docker volumes during a normal restart. Removing `postgres_data` deletes the production database.
+
+## Descriptor Criteria Scheduler
+
+The app includes an optional worker for automatic descriptor, criteria, and grades completeness checks. It does not run AI and does not send Telegram notifications.
+
+The worker command is:
+
+```bash
+python manage.py run_descriptor_criteria_scheduler
+```
+
+In Docker Compose it runs as the `scheduler` service and checks the database every `60` seconds. The admin panel controls whether it launches checks:
+
+- Open `Классы и таблицы` -> `Проверить дескрипторы, критерии и оценки`.
+- Enable or disable `Включить автопроверку`.
+- The interval is fixed at `90` minutes for now.
+- `Запустить сейчас` starts one manual check even when the toggle is off.
+
+The worker skips a scheduled run if another `descriptor_criteria_fill_check` job is still `pending` or `running`, so it does not create overlapping JobRun records. Scheduled JobRun records include `trigger=scheduled` in `params_json`; manual runs include `trigger=manual`.
+
+Check the worker on the server with:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml ps scheduler
+docker compose --env-file .env.production -f docker-compose.prod.yml logs --tail=100 scheduler
+```
+
+If the server uses a local `docker-compose.server.yml`, copy the committed `scheduler` service into that file before relying on automatic checks.
 
 ## GitHub Actions SSH Deploy
 

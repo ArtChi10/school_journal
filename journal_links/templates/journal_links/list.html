@@ -13,7 +13,7 @@
     </form>
   {% endif %}
  {% if perms.jobs.run_check_missing_data %}
-    <a class="btn btn-outline-primary" href="{% url 'journal_links:descriptor_criteria_fill_check' %}">Проверить дескрипторы и критерии</a>
+    <a class="btn btn-outline-primary" href="{% url 'journal_links:descriptor_criteria_fill_check' %}">Проверить дескрипторы, критерии и оценки</a>
     {% if perms.journal_links.change_classsheetlink %}
       <a class="btn btn-outline-secondary" href="{% url 'journal_links:descriptor_criteria_report_target' %}">Google-отчет</a>
     {% endif %}
