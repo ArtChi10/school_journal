@@ -67,6 +67,7 @@ class NotificationEvent(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices)
     sent_at = models.DateTimeField(auto_now_add=True)
     payload_hash = models.CharField(max_length=64)
+    error_message = models.TextField(blank=True, default="")
 
     class Meta:
         ordering = ["-sent_at"]

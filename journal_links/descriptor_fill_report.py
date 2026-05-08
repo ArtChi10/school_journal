@@ -108,10 +108,12 @@ def normalize_report_row(row: dict[str, Any]) -> dict[str, Any]:
     descriptor_status = clean_value(row.get("descriptor_status")).lower()
     criteria_status = clean_value(row.get("criteria_status")).lower()
     grades_status = clean_value(row.get("grades_status")).lower()
-    teacher_name = clean_value(row.get("teacher_name")) or "—"
+    raw_teacher_name = clean_value(row.get("teacher_name"))
+    teacher_name = raw_teacher_name or "—"
     module_number = row.get("module_number")
     normalized = {
         "teacher_name": teacher_name,
+        "raw_teacher_name": raw_teacher_name,
         "class_code": clean_value(row.get("class_code")) or "—",
         "subject_name": clean_value(row.get("subject_name")) or "—",
         "module_number": "—" if module_number is None else clean_value(module_number),

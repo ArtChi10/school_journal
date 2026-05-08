@@ -14,6 +14,12 @@
 
 {% block page_actions %}
   {% if job_run %}
+    {% if perms.jobs.send_reminders %}
+      <form method="post" action="{% url 'journal_links:send_descriptor_criteria_fill_reminders' job_run.id %}">
+        {% csrf_token %}
+        <button class="btn btn-primary" type="submit">Отправить напоминания преподавателям</button>
+      </form>
+    {% endif %}
     <a class="btn btn-outline-secondary" href="{% url 'journal_links:descriptor_criteria_fill_report_csv' %}{% if querystring %}?{{ querystring }}{% endif %}">Экспорт CSV</a>
     <a class="btn btn-outline-secondary" href="{% url 'job_run_detail' job_run.id %}">Открыть JobRun</a>
   {% endif %}

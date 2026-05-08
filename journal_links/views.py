@@ -21,6 +21,7 @@ from admin_panel.google_oauth import (
     get_google_oauth_status,
 )
 from jobs.models import JobRun
+from notifications.descriptor_fill_reminders import send_descriptor_fill_reminders
 from validation.descriptor_criteria_fill import (
     JOB_TYPE as DESCRIPTOR_CRITERIA_FILL_JOB_TYPE,
     enqueue_descriptor_criteria_fill_check_job,
@@ -314,6 +315,35 @@ def descriptor_criteria_fill_report_csv(request):
     writer.writerow({header: header for header in CSV_HEADERS})
     writer.writerows(export_rows)
     return response
+
+
+@require_POST
+@login_required
+@permission_required_403("jobs.send_reminders", message="Доступ запрещён: нельзя отправлять напоминания преподавателям.")
+def send_descriptor_criteria_fill_reminders(request, run_id):
+    source_job_run = get_object_or_404(
+        JobRun,
+        id=run_id,
+        job_type=REPORT_JOB_TYPE,
+        status__in=REPORT_STATUSES,
+    )
+    reminder_job = send_descriptor_fill_reminders(
+        source_job_run,
+        initiated_by=request.user if request.user.is_authenticated else None,
+    )
+    summary = reminder_job.result_json.get("summary", {}) if isinstance(reminder_job.result_json, dict) else {}
+    messages.success(
+        request,
+        (
+            "Напоминания преподавателям обработаны: "
+            f"учителей={summary.get('teachers_total', 0)}, "
+            f"отправлено={summary.get('sent', 0)}, "
+            f"без контакта={summary.get('skipped_no_contact', 0)}, "
+            f"дубли={summary.get('skipped_duplicate', 0)}, "
+            f"ошибки={summary.get('failed', 0)}."
+        ),
+    )
+    return redirect("job_run_detail", run_id=reminder_job.id)
 
 
 @login_required

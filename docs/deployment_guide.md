@@ -156,6 +156,13 @@ The worker skips a scheduled run if another `descriptor_criteria_fill_check` job
 
 The read-only UI report is available at `Отчет заполненности` or `/links/fill-check-report/`. It reads the latest or selected `descriptor_criteria_fill_check` JobRun, shows summary counters, problem sections, teacher grouping, and CSV export. Opening this report does not start a new check, does not run AI, and does not send Telegram notifications. The scheduled worker and Google Spreadsheet report continue to run separately.
 
+Manual Telegram reminders can be sent from the same UI report with `Отправить напоминания преподавателям`. This action is manual only: the scheduler worker never sends these reminders by itself. Reminders read the selected `descriptor_criteria_fill_check` JobRun, create a separate `descriptor_fill_reminders` JobRun, and deduplicate identical payloads per source JobRun and teacher.
+
+Before using manual reminders, configure:
+
+- `TELEGRAM_BOT_TOKEN`
+- `TeacherContact` records with active `chat_id` values matching `teacher_name`
+
 Check the worker on the server with:
 
 ```bash

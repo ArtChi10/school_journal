@@ -42,6 +42,9 @@ Use this checklist before promoting the production Docker Compose stack.
 - [ ] Scheduled checks do not run AI or send Telegram notifications.
 - [ ] `Отчет заполненности` reads the latest or selected `descriptor_criteria_fill_check` JobRun without starting a new check.
 - [ ] `Отчет заполненности` shows descriptor, criteria, grades, teacher grouping, and CSV export.
+- [ ] Manual fill reminders are sent only from the `Отправить напоминания преподавателям` button.
+- [ ] Manual fill reminders require `TELEGRAM_BOT_TOKEN` and active `TeacherContact.chat_id` values.
+- [ ] The scheduled descriptor worker does not send Telegram reminders automatically.
 - [ ] If AI criteria review is used, `OPENAI_API_KEY` is configured in production.
 - [ ] If AI criteria Google report export is used, an active AI report target is configured separately from the descriptor report.
 - [ ] AI criteria review sends one batch AI request per class and skips empty/numeric-only criteria.
