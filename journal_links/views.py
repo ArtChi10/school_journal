@@ -69,6 +69,22 @@ def _non_empty(value: str | None) -> str:
     return (value or "").strip()
 
 
+def _format_missing_contacts_message(summary: dict) -> str:
+    names = summary.get("missing_contacts", [])
+    if not isinstance(names, list):
+        return ""
+    normalized_names = [str(name).strip() for name in names if str(name).strip()]
+    if not normalized_names:
+        return ""
+
+    visible_names = normalized_names[:20]
+    message = "Не найдены в списке Telegram-бота: " + ", ".join(visible_names)
+    hidden_count = len(normalized_names) - len(visible_names)
+    if hidden_count > 0:
+        message = f"{message} и еще {hidden_count}"
+    return f"{message}."
+
+
 def _latest_descriptor_criteria_run() -> JobRun | None:
     return (
         JobRun.objects.filter(job_type=DESCRIPTOR_CRITERIA_FILL_JOB_TYPE)
@@ -343,6 +359,9 @@ def send_descriptor_criteria_fill_reminders(request, run_id):
             f"ошибки={summary.get('failed', 0)}."
         ),
     )
+    missing_contacts_message = _format_missing_contacts_message(summary)
+    if missing_contacts_message:
+        messages.warning(request, missing_contacts_message)
     return redirect("job_run_detail", run_id=reminder_job.id)
 
 

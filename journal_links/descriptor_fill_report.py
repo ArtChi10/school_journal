@@ -14,6 +14,7 @@ REPORT_STATUSES = [JobRun.Status.SUCCESS, JobRun.Status.PARTIAL, JobRun.Status.F
 REPORT_STATUS_VALUES = {str(status) for status in REPORT_STATUSES}
 RECENT_RUN_LIMIT = 50
 TBILISI_TZ = ZoneInfo("Asia/Tbilisi")
+MAX_TEACHER_NAME_LENGTH = 255
 
 GRADE_OK_STATUSES = {"ok", "filled", "not_applicable"}
 PROBLEM_TYPES = {
@@ -47,6 +48,35 @@ CSV_HEADERS = [
 
 def clean_value(value: Any) -> str:
     return "" if value is None else str(value).strip()
+
+
+def _compact_teacher_candidate(value: str) -> str:
+    candidate = clean_value(value).strip('"').strip("'")
+    if not candidate:
+        return ""
+    if len(candidate) > MAX_TEACHER_NAME_LENGTH:
+        return ""
+    if not any(char.isalpha() for char in candidate):
+        return ""
+    if len(candidate.split()) > 8:
+        return ""
+    return candidate
+
+
+def clean_teacher_name(value: Any) -> str:
+    raw_value = clean_value(value)
+    if not raw_value:
+        return ""
+    if "\n" not in raw_value and "\t" not in raw_value:
+        return raw_value[:MAX_TEACHER_NAME_LENGTH].strip()
+
+    for line in raw_value.splitlines():
+        for part in line.split("\t"):
+            candidate = _compact_teacher_candidate(part)
+            if candidate:
+                return candidate
+        break
+    return ""
 
 
 def _int_value(value: Any) -> int:
@@ -108,7 +138,7 @@ def normalize_report_row(row: dict[str, Any]) -> dict[str, Any]:
     descriptor_status = clean_value(row.get("descriptor_status")).lower()
     criteria_status = clean_value(row.get("criteria_status")).lower()
     grades_status = clean_value(row.get("grades_status")).lower()
-    raw_teacher_name = clean_value(row.get("teacher_name"))
+    raw_teacher_name = clean_teacher_name(row.get("teacher_name"))
     teacher_name = raw_teacher_name or "—"
     module_number = row.get("module_number")
     normalized = {

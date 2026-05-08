@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+from django.contrib.messages import get_messages
 from django.contrib.auth.models import Permission, User
 from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
@@ -174,9 +175,69 @@ class DescriptorFillReminderTests(TestCase):
         reminder_job = send_descriptor_fill_reminders(self.source_job)
 
         self.assertEqual(reminder_job.result_json["summary"]["skipped_no_contact"], 1)
+        self.assertEqual(reminder_job.result_json["summary"]["missing_contacts"], ["Teacher B"])
         skipped_event = NotificationEvent.objects.get(teacher_name="Teacher B")
         self.assertEqual(skipped_event.status, NotificationEvent.Status.SKIPPED)
         send_telegram_mock.assert_called_once()
+
+    @patch("notifications.descriptor_fill_reminders.send_telegram")
+    def test_send_warns_about_teachers_missing_from_telegram_contacts(self, send_telegram_mock):
+        self.user.user_permissions.add(self.send_perm)
+        TeacherContact.objects.create(name="Teacher A", chat_id="111", is_active=True)
+
+        response = self.client.post(self._send_url())
+
+        self.assertEqual(response.status_code, 302)
+        messages = [str(message) for message in get_messages(response.wsgi_request)]
+        self.assertTrue(any("Не найдены в списке Telegram-бота: Teacher B." in message for message in messages))
+        reminder_job = JobRun.objects.get(job_type=JOB_TYPE)
+        self.assertEqual(reminder_job.result_json["summary"]["missing_contacts"], ["Teacher B"])
+        send_telegram_mock.assert_called_once()
+
+    @patch("notifications.descriptor_fill_reminders.send_telegram")
+    def test_tabbed_teacher_name_is_normalized_before_sending(self, send_telegram_mock):
+        dirty_name = (
+            "Teacher A\t\t\t\n"
+            "1\t\t\t\n"
+            '"In this model we have a focus on building fluency with integers"\t\t\t'
+        )
+        rows = [
+            {
+                **self._rows()[0],
+                "teacher_name": dirty_name,
+            }
+        ]
+        source_job = self._create_source_job(rows=rows)
+        TeacherContact.objects.create(name="Teacher A", chat_id="111", is_active=True)
+
+        reminder_job = send_descriptor_fill_reminders(source_job)
+
+        self.assertEqual(reminder_job.status, JobRun.Status.SUCCESS)
+        self.assertEqual(reminder_job.result_json["summary"]["sent"], 1)
+        self.assertEqual(reminder_job.result_json["teachers"][0]["teacher_name"], "Teacher A")
+        event = NotificationEvent.objects.get(job_run=reminder_job)
+        self.assertEqual(event.teacher_name, "Teacher A")
+        send_telegram_mock.assert_called_once()
+
+    @patch("notifications.descriptor_fill_reminders.send_telegram")
+    def test_long_teacher_name_does_not_break_notification_event(self, send_telegram_mock):
+        long_name = "Teacher " + ("Verylong " * 40)
+        rows = [
+            {
+                **self._rows()[0],
+                "teacher_name": long_name,
+            }
+        ]
+        source_job = self._create_source_job(rows=rows)
+
+        reminder_job = send_descriptor_fill_reminders(source_job)
+
+        self.assertEqual(reminder_job.status, JobRun.Status.SUCCESS)
+        self.assertEqual(reminder_job.result_json["summary"]["skipped_no_contact"], 1)
+        self.assertEqual(len(reminder_job.result_json["summary"]["missing_contacts"][0]), 255)
+        event = NotificationEvent.objects.get(job_run=reminder_job)
+        self.assertLessEqual(len(event.teacher_name), 255)
+        send_telegram_mock.assert_not_called()
 
     @patch("notifications.descriptor_fill_reminders.send_telegram")
     def test_inactive_contact_is_skipped(self, send_telegram_mock):

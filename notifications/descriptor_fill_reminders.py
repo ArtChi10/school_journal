@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from jobs.models import JobLog, JobRun
 from jobs.services import log_step
-from journal_links.descriptor_fill_report import REPORT_JOB_TYPE, rows_from_job_run
+from journal_links.descriptor_fill_report import MAX_TEACHER_NAME_LENGTH, REPORT_JOB_TYPE, rows_from_job_run
 from notifications.models import NotificationEvent, TeacherContact
 from notifications.services import send_telegram
 
@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 
 def _clean_str(value: object) -> str:
     return "" if value is None else str(value).strip()
+
+
+def _db_teacher_name(value: object) -> str:
+    return _clean_str(value)[:MAX_TEACHER_NAME_LENGTH]
 
 
 def _log(job_run: JobRun, level: str, message: str, context: dict | None = None) -> None:
@@ -130,12 +134,21 @@ def build_descriptor_fill_reminder_message(payload: dict) -> str:
 def _resolve_contact(teacher_name: str) -> tuple[TeacherContact | None, str | None]:
     contact = TeacherContact.objects.filter(name=teacher_name).first()
     if not contact:
+        contact = TeacherContact.objects.filter(name__iexact=teacher_name).first()
+    if not contact:
         return None, "skipped_no_contact"
     if not contact.is_active:
         return None, "skipped_no_contact"
     if not _clean_str(contact.chat_id):
         return None, "skipped_no_contact"
     return contact, None
+
+
+def _append_missing_contact(summary: dict[str, Any], teacher_name: str) -> None:
+    missing_contacts = summary.setdefault("missing_contacts", [])
+    display_name = _db_teacher_name(teacher_name)
+    if display_name and display_name not in missing_contacts:
+        missing_contacts.append(display_name)
 
 
 def _already_sent(source_job_run: JobRun, *, teacher_name: str, payload_hash: str) -> bool:
@@ -162,7 +175,7 @@ def _record_notification_event(
 ) -> None:
     NotificationEvent.objects.create(
         job_run=job_run,
-        teacher_name=teacher_name,
+        teacher_name=_db_teacher_name(teacher_name),
         channel=NotificationEvent.Channel.TELEGRAM,
         status=status,
         payload_hash=payload_hash,
@@ -210,6 +223,7 @@ def send_descriptor_fill_reminders(source_job_run: JobRun, *, initiated_by=None)
         "skipped_no_contact": 0,
         "skipped_duplicate": 0,
         "failed": 0,
+        "missing_contacts": [],
     }
     teacher_results = []
 
@@ -226,6 +240,7 @@ def send_descriptor_fill_reminders(source_job_run: JobRun, *, initiated_by=None)
 
             if skip_reason:
                 summary["skipped_no_contact"] += 1
+                _append_missing_contact(summary, teacher_name)
                 teacher_results.append(_teacher_result(payload, status="skipped", reason=skip_reason))
                 _record_notification_event(
                     reminder_job,
