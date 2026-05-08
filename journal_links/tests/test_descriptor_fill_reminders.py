@@ -236,6 +236,44 @@ class DescriptorFillReminderTests(TestCase):
         self.assertIn("boom", error_event.error_message)
         self.assertTrue(JobLog.objects.filter(job_run=reminder_job, message="Reminder failed").exists())
 
+    @patch("notifications.descriptor_fill_reminders.send_telegram")
+    def test_unexpected_send_error_does_not_break_all_distribution(self, send_telegram_mock):
+        TeacherContact.objects.create(name="Teacher A", chat_id="111", is_active=True)
+        TeacherContact.objects.create(name="Teacher B", chat_id="222", is_active=True)
+
+        def send_side_effect(chat_id, *_args, **_kwargs):
+            if chat_id == "111":
+                raise RuntimeError("unexpected socket error")
+            return {"ok": True}
+
+        send_telegram_mock.side_effect = send_side_effect
+
+        reminder_job = send_descriptor_fill_reminders(self.source_job)
+
+        self.assertEqual(reminder_job.status, JobRun.Status.PARTIAL)
+        self.assertEqual(reminder_job.result_json["summary"]["failed"], 1)
+        self.assertEqual(reminder_job.result_json["summary"]["sent"], 1)
+        error_event = NotificationEvent.objects.get(job_run=reminder_job, teacher_name="Teacher A")
+        self.assertEqual(error_event.status, NotificationEvent.Status.ERROR)
+        self.assertIn("unexpected socket error", error_event.error_message)
+
+    @patch("notifications.descriptor_fill_reminders._record_notification_event", side_effect=Exception("missing column"))
+    def test_send_redirects_to_failed_job_when_notification_event_fails(self, _record_event_mock):
+        self.user.user_permissions.add(self.send_perm)
+
+        response = self.client.post(self._send_url())
+
+        self.assertEqual(response.status_code, 302)
+        reminder_job = JobRun.objects.get(job_type=JOB_TYPE)
+        self.assertEqual(response.url, reverse("job_run_detail", kwargs={"run_id": reminder_job.id}))
+        self.assertEqual(reminder_job.status, JobRun.Status.FAILED)
+        self.assertEqual(reminder_job.result_json["summary"]["sent"], 0)
+        self.assertEqual(reminder_job.result_json["summary"]["failed"], 1)
+        self.assertIn("missing column", reminder_job.result_json["summary"]["fatal_error"])
+        self.assertTrue(
+            JobLog.objects.filter(job_run=reminder_job, message="Descriptor fill reminders failed").exists()
+        )
+
     @patch("journal_links.views.enqueue_descriptor_criteria_fill_check_job")
     @patch("notifications.descriptor_fill_reminders.send_telegram")
     def test_send_does_not_start_new_check_or_ai(self, send_telegram_mock, enqueue_mock):

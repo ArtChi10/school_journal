@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from typing import Any
 
 from django.db.models import Q
@@ -11,9 +12,10 @@ from jobs.models import JobLog, JobRun
 from jobs.services import log_step
 from journal_links.descriptor_fill_report import REPORT_JOB_TYPE, rows_from_job_run
 from notifications.models import NotificationEvent, TeacherContact
-from notifications.services import TelegramSendError, send_telegram
+from notifications.services import send_telegram
 
 JOB_TYPE = "descriptor_fill_reminders"
+logger = logging.getLogger(__name__)
 
 
 def _clean_str(value: object) -> str:
@@ -201,120 +203,146 @@ def send_descriptor_fill_reminders(source_job_run: JobRun, *, initiated_by=None)
         {"source_job_run_id": str(source_job_run.id)},
     )
 
-    rows = rows_from_job_run(source_job_run)
-    grouped_by_teacher, skipped_no_teacher = _group_rows_by_teacher(rows)
     summary = {
-        "teachers_total": len(grouped_by_teacher),
+        "teachers_total": 0,
         "sent": 0,
-        "skipped_no_teacher": skipped_no_teacher,
+        "skipped_no_teacher": 0,
         "skipped_no_contact": 0,
         "skipped_duplicate": 0,
         "failed": 0,
     }
     teacher_results = []
 
-    for teacher_name in sorted(grouped_by_teacher):
-        payload = grouped_by_teacher[teacher_name]
-        payload_hash = _payload_hash(payload)
-        contact, skip_reason = _resolve_contact(teacher_name)
+    try:
+        rows = rows_from_job_run(source_job_run)
+        grouped_by_teacher, skipped_no_teacher = _group_rows_by_teacher(rows)
+        summary["teachers_total"] = len(grouped_by_teacher)
+        summary["skipped_no_teacher"] = skipped_no_teacher
 
-        if skip_reason:
-            summary["skipped_no_contact"] += 1
-            teacher_results.append(_teacher_result(payload, status="skipped", reason=skip_reason))
+        for teacher_name in sorted(grouped_by_teacher):
+            payload = grouped_by_teacher[teacher_name]
+            payload_hash = _payload_hash(payload)
+            contact, skip_reason = _resolve_contact(teacher_name)
+
+            if skip_reason:
+                summary["skipped_no_contact"] += 1
+                teacher_results.append(_teacher_result(payload, status="skipped", reason=skip_reason))
+                _record_notification_event(
+                    reminder_job,
+                    teacher_name=teacher_name,
+                    status=NotificationEvent.Status.SKIPPED,
+                    payload_hash=payload_hash,
+                )
+                _log(
+                    reminder_job,
+                    JobLog.Level.WARNING,
+                    "Reminder skipped: no contact",
+                    {"teacher": teacher_name, "reason": skip_reason},
+                )
+                continue
+
+            if _already_sent(source_job_run, teacher_name=teacher_name, payload_hash=payload_hash):
+                summary["skipped_duplicate"] += 1
+                teacher_results.append(_teacher_result(payload, status="skipped", reason="skipped_duplicate"))
+                _record_notification_event(
+                    reminder_job,
+                    teacher_name=teacher_name,
+                    status=NotificationEvent.Status.SKIPPED,
+                    payload_hash=payload_hash,
+                )
+                _log(
+                    reminder_job,
+                    JobLog.Level.INFO,
+                    "Reminder skipped: duplicate",
+                    {"teacher": teacher_name},
+                )
+                continue
+
+            message = build_descriptor_fill_reminder_message(payload)
+            try:
+                send_telegram(contact.chat_id, message, retries=1, job_run_id=reminder_job.id)
+            except Exception as exc:
+                summary["failed"] += 1
+                error_message = str(exc) or exc.__class__.__name__
+                teacher_results.append(_teacher_result(payload, status="error", reason=error_message))
+                _record_notification_event(
+                    reminder_job,
+                    teacher_name=teacher_name,
+                    status=NotificationEvent.Status.ERROR,
+                    payload_hash=payload_hash,
+                    error_message=error_message,
+                )
+                _log(
+                    reminder_job,
+                    JobLog.Level.ERROR,
+                    "Reminder failed",
+                    {"teacher": teacher_name, "error": error_message},
+                )
+                continue
+
+            summary["sent"] += 1
+            teacher_results.append(_teacher_result(payload, status="sent"))
             _record_notification_event(
                 reminder_job,
                 teacher_name=teacher_name,
-                status=NotificationEvent.Status.SKIPPED,
-                payload_hash=payload_hash,
-            )
-            _log(
-                reminder_job,
-                JobLog.Level.WARNING,
-                "Reminder skipped: no contact",
-                {"teacher": teacher_name, "reason": skip_reason},
-            )
-            continue
-
-        if _already_sent(source_job_run, teacher_name=teacher_name, payload_hash=payload_hash):
-            summary["skipped_duplicate"] += 1
-            teacher_results.append(_teacher_result(payload, status="skipped", reason="skipped_duplicate"))
-            _record_notification_event(
-                reminder_job,
-                teacher_name=teacher_name,
-                status=NotificationEvent.Status.SKIPPED,
+                status=NotificationEvent.Status.SENT,
                 payload_hash=payload_hash,
             )
             _log(
                 reminder_job,
                 JobLog.Level.INFO,
-                "Reminder skipped: duplicate",
-                {"teacher": teacher_name},
+                "Reminder sent",
+                {"teacher": teacher_name, "chat_id": contact.chat_id},
             )
-            continue
 
-        message = build_descriptor_fill_reminder_message(payload)
-        try:
-            send_telegram(contact.chat_id, message, retries=1, job_run_id=reminder_job.id)
-        except TelegramSendError as exc:
-            summary["failed"] += 1
-            error_message = str(exc)
-            teacher_results.append(_teacher_result(payload, status="error", reason=error_message))
-            _record_notification_event(
-                reminder_job,
-                teacher_name=teacher_name,
-                status=NotificationEvent.Status.ERROR,
-                payload_hash=payload_hash,
-                error_message=error_message,
+        if skipped_no_teacher:
+            teacher_results.append(
+                {
+                    "teacher_name": "",
+                    "status": "skipped",
+                    "reason": "skipped_no_teacher",
+                    "descriptor_count": 0,
+                    "criteria_count": 0,
+                    "grades_count": 0,
+                }
             )
             _log(
                 reminder_job,
-                JobLog.Level.ERROR,
-                "Reminder failed",
-                {"teacher": teacher_name, "error": error_message},
+                JobLog.Level.WARNING,
+                "Reminder skipped: no teacher",
+                {"skipped_no_teacher": skipped_no_teacher},
             )
-            continue
 
-        summary["sent"] += 1
-        teacher_results.append(_teacher_result(payload, status="sent"))
-        _record_notification_event(
-            reminder_job,
-            teacher_name=teacher_name,
-            status=NotificationEvent.Status.SENT,
-            payload_hash=payload_hash,
-        )
+        reminder_job.status = JobRun.Status.PARTIAL if summary["failed"] else JobRun.Status.SUCCESS
+        reminder_job.finished_at = timezone.now()
+        reminder_job.result_json = {"summary": summary, "teachers": teacher_results}
+        reminder_job.save(update_fields=["status", "finished_at", "result_json"])
         _log(
             reminder_job,
             JobLog.Level.INFO,
-            "Reminder sent",
-            {"teacher": teacher_name, "chat_id": contact.chat_id},
+            "Descriptor fill reminders finished",
+            summary,
         )
-
-    if skipped_no_teacher:
-        teacher_results.append(
-            {
-                "teacher_name": "",
-                "status": "skipped",
-                "reason": "skipped_no_teacher",
-                "descriptor_count": 0,
-                "criteria_count": 0,
-                "grades_count": 0,
-            }
-        )
+    except Exception as exc:
+        error_message = str(exc) or exc.__class__.__name__
+        summary["failed"] = max(1, int(summary.get("failed", 0) or 0))
+        summary["fatal_error"] = error_message
+        reminder_job.status = JobRun.Status.FAILED
+        reminder_job.finished_at = timezone.now()
+        reminder_job.result_json = {
+            "summary": summary,
+            "teachers": teacher_results,
+            "error": error_message,
+        }
+        reminder_job.save(update_fields=["status", "finished_at", "result_json"])
         _log(
             reminder_job,
-            JobLog.Level.WARNING,
-            "Reminder skipped: no teacher",
-            {"skipped_no_teacher": skipped_no_teacher},
+            JobLog.Level.ERROR,
+            "Descriptor fill reminders failed",
+            {"source_job_run_id": str(source_job_run.id), "error": error_message},
         )
-
-    reminder_job.status = JobRun.Status.PARTIAL if summary["failed"] else JobRun.Status.SUCCESS
-    reminder_job.finished_at = timezone.now()
-    reminder_job.result_json = {"summary": summary, "teachers": teacher_results}
-    reminder_job.save(update_fields=["status", "finished_at", "result_json"])
-    _log(
-        reminder_job,
-        JobLog.Level.INFO,
-        "Descriptor fill reminders finished",
-        summary,
-    )
+        logger.exception(
+            "Descriptor fill reminders failed",
+            extra={"source_job_run_id": str(source_job_run.id), "reminder_job_id": str(reminder_job.id)},
+        )
     return reminder_job
