@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from jobs.models import JobLog, JobRun
 from notifications.models import NotificationEvent, TeacherContact
@@ -10,6 +10,7 @@ from notifications.services import TelegramSendError
 from pipeline.models import CriterionEntry
 
 
+@override_settings(ADMIN_LOG_CHAT_ID="")
 class SendValidationRemindersTests(TestCase):
     def setUp(self):
         self.job_run = JobRun.objects.create(job_type="run_validation", result_json={"issues": []})
@@ -150,6 +151,7 @@ class SendValidationRemindersTests(TestCase):
         self.assertEqual(send_telegram_mock.call_count, 2)
 
 
+@override_settings(ADMIN_LOG_CHAT_ID="")
 class SendValidationRemindersCommandTests(TestCase):
     @patch("notifications.reminders.send_telegram")
     def test_command_accepts_job_id_and_prints_summary(self, _send_telegram_mock):
@@ -177,6 +179,7 @@ class SendValidationRemindersCommandTests(TestCase):
 
 
 
+@override_settings(ADMIN_LOG_CHAT_ID="")
 class RunValidationRemindersJobTests(TestCase):
     @patch("notifications.reminders.send_telegram")
     def test_creates_separate_reminder_job_with_logs(self, send_telegram_mock):
