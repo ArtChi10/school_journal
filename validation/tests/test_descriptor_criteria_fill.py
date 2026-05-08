@@ -1,10 +1,12 @@
 import tempfile
+from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth.models import Permission, User
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 from openpyxl import Workbook
 
 from jobs.models import JobRun
@@ -389,20 +391,41 @@ class DescriptorCriteriaFillViewTests(TestCase):
     def test_schedule_toggle_saves_enabled_state(self):
         response = self.client.post(
             reverse("journal_links:descriptor_criteria_fill_check"),
-            {"action": "save_schedule", "is_enabled": "on"},
+            {"action": "save_schedule", "is_enabled": "on", "interval_minutes": "30"},
         )
 
         self.assertEqual(response.status_code, 302)
         schedule = DescriptorCriteriaCheckSchedule.load()
         self.assertTrue(schedule.is_enabled)
+        self.assertEqual(schedule.interval_minutes, 30)
         self.assertEqual(schedule.updated_by, self.user)
         self.assertIsNotNone(schedule.next_run_at)
+
+    def test_schedule_interval_saves_and_reschedules_next_run(self):
+        schedule = DescriptorCriteriaCheckSchedule.load()
+        schedule.is_enabled = True
+        schedule.interval_minutes = 90
+        schedule.next_run_at = timezone.now() + timedelta(minutes=80)
+        schedule.save()
+
+        now = timezone.now()
+        with patch("journal_links.views.timezone.now", return_value=now):
+            response = self.client.post(
+                reverse("journal_links:descriptor_criteria_fill_check"),
+                {"action": "save_schedule", "is_enabled": "on", "interval_minutes": "45"},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        schedule.refresh_from_db()
+        self.assertEqual(schedule.interval_minutes, 45)
+        self.assertEqual(schedule.next_run_at, now + timedelta(minutes=45))
 
     def test_schedule_block_renders(self):
         response = self.client.get(reverse("journal_links:descriptor_criteria_fill_check"))
 
         self.assertContains(response, "Автопроверка дескрипторов, критериев и оценок")
         self.assertContains(response, "Включить автопроверку")
+        self.assertContains(response, "Интервал, минут")
         self.assertContains(response, "Запустить сейчас")
 
     def test_page_renders_summary_table_and_filters(self):

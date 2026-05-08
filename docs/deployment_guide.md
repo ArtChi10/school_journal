@@ -114,6 +114,7 @@ Replace `<SERVER_IP>` with the server IP or HTTP host:
 ```bash
 curl -I http://<SERVER_IP>/
 curl -I http://<SERVER_IP>/links/
+curl -I http://<SERVER_IP>/links/fill-check-report/
 curl -I http://<SERVER_IP>/runs/
 curl -sS http://<SERVER_IP>/healthz
 curl -sS http://<SERVER_IP>/readyz
@@ -121,7 +122,7 @@ curl -sS http://<SERVER_IP>/readyz
 
 Expected results:
 
-- `/`, `/links/`, and `/runs/` return HTTP success or an expected login/redirect response.
+- `/`, `/links/`, `/links/fill-check-report/`, and `/runs/` return HTTP success or an expected login/redirect response.
 - `/healthz` returns `{"status":"ok"}`.
 - `/readyz` returns `{"status":"ok", ...}` when database and critical env checks pass.
 
@@ -148,10 +149,12 @@ In Docker Compose it runs as the `scheduler` service and checks the database eve
 
 - Open `Классы и таблицы` -> `Проверить дескрипторы, критерии и оценки`.
 - Enable or disable `Включить автопроверку`.
-- The interval is fixed at `90` minutes for now.
+- Set `Интервал, минут`; the default is `30` minutes.
 - `Запустить сейчас` starts one manual check even when the toggle is off.
 
 The worker skips a scheduled run if another `descriptor_criteria_fill_check` job is still `pending` or `running`, so it does not create overlapping JobRun records. Scheduled JobRun records include `trigger=scheduled` in `params_json`; manual runs include `trigger=manual`.
+
+The read-only UI report is available at `Отчет заполненности` or `/links/fill-check-report/`. It reads the latest or selected `descriptor_criteria_fill_check` JobRun, shows summary counters, problem sections, teacher grouping, and CSV export. Opening this report does not start a new check, does not run AI, and does not send Telegram notifications. The scheduled worker and Google Spreadsheet report continue to run separately.
 
 Check the worker on the server with:
 

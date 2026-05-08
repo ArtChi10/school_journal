@@ -78,6 +78,15 @@
               {{ schedule_form.is_enabled }}
               <label class="form-check-label" for="{{ schedule_form.is_enabled.id_for_label }}">Включить автопроверку</label>
             </div>
+            <div>
+              <label class="form-label" for="{{ schedule_form.interval_minutes.id_for_label }}">{{ schedule_form.interval_minutes.label }}</label>
+              {{ schedule_form.interval_minutes }}
+              {% if schedule_form.interval_minutes.help_text %}<div class="form-text">{{ schedule_form.interval_minutes.help_text }}</div>{% endif %}
+              {% if schedule_form.interval_minutes.errors %}<div class="text-danger small mt-1">{{ schedule_form.interval_minutes.errors|join:", " }}</div>{% endif %}
+            </div>
+            {% if schedule_form.non_field_errors %}
+              <div class="alert alert-danger mb-0">{{ schedule_form.non_field_errors|join:", " }}</div>
+            {% endif %}
             <button class="btn btn-outline-primary" type="submit">Сохранить</button>
           </form>
           <form method="post">

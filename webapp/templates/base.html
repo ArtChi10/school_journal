@@ -37,7 +37,10 @@
             <nav class="nav nav-pills flex-column gap-1">
               <a class="nav-link {% if request.path == '/' %}active{% endif %}" href="{% url 'dashboard' %}">Дашборд</a>
               {% if perms.journal_links.view_classsheetlink %}
-                <a class="nav-link {% if '/links/' in request.path %}active{% endif %}" href="{% url 'journal_links:list_links' %}">Классы и таблицы</a>
+                <a class="nav-link {% if '/links/' in request.path and '/links/fill-check-report/' not in request.path %}active{% endif %}" href="{% url 'journal_links:list_links' %}">Классы и таблицы</a>
+              {% endif %}
+              {% if perms.jobs.view_jobrun %}
+                <a class="nav-link {% if '/links/fill-check-report/' in request.path %}active{% endif %}" href="{% url 'journal_links:descriptor_criteria_fill_report' %}">Отчет заполненности</a>
               {% endif %}
               {% if perms.pipeline.view_criterionentry %}
                 <a class="nav-link {% if '/criteria-table/' in request.path %}active{% endif %}" href="{% url 'pipeline:criteria_table' %}">Таблица критериев</a>

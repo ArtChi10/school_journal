@@ -43,7 +43,7 @@ class DescriptorCriteriaReportTarget(models.Model):
 
 class DescriptorCriteriaCheckSchedule(models.Model):
     is_enabled = models.BooleanField(default=False)
-    interval_minutes = models.PositiveIntegerField(default=90)
+    interval_minutes = models.PositiveIntegerField(default=30)
     last_started_at = models.DateTimeField(null=True, blank=True)
     last_finished_at = models.DateTimeField(null=True, blank=True)
     next_run_at = models.DateTimeField(null=True, blank=True)

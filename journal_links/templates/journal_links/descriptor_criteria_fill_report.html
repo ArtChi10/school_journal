@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+
+{% block page_title %}Отчет по заполненности{% endblock %}
+{% block page_heading %}Отчет по заполненности{% endblock %}
+
+{% block breadcrumbs %}
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0">
+      <li class="breadcrumb-item"><a href="{% url 'journal_links:list_links' %}">Классы и таблицы</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Отчет по заполненности</li>
+    </ol>
+  </nav>
+{% endblock %}
+
+{% block page_actions %}
+  {% if job_run %}
+    <a class="btn btn-outline-secondary" href="{% url 'journal_links:descriptor_criteria_fill_report_csv' %}{% if querystring %}?{{ querystring }}{% endif %}">Экспорт CSV</a>
+    <a class="btn btn-outline-secondary" href="{% url 'job_run_detail' job_run.id %}">Открыть JobRun</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+  {% if not job_run %}
+    <section class="card">
+      <div class="card-body">
+        <p class="mb-0 text-secondary">Проверки еще не запускались.</p>
+      </div>
+    </section>
+  {% else %}
+    {% if job_run.status == "failed" or job_run.status == "partial" %}
+      <section class="alert alert-warning shadow-sm" role="status">
+        Последний выбранный запуск завершился со статусом {{ summary.status }}. Ниже показаны доступные данные из JobRun.
+      </section>
+    {% endif %}
+
+    <section class="card mb-4">
+      <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+          <div class="col-12 col-lg-5">
+            <label class="form-label" for="id_run_id">Запуск JobRun</label>
+            <select id="id_run_id" name="run_id" class="form-select">
+              {% for run in run_choices %}
+                <option value="{{ run.id }}" {% if filters.run_id == run.id %}selected{% endif %}>{{ run.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-6 col-lg-2">
+            <label class="form-label" for="id_status">Статус запуска</label>
+            <select id="id_status" name="status" class="form-select">
+              <option value="">Все</option>
+              {% for value, label in status_choices %}
+                <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-6 col-lg-2">
+            <label class="form-label" for="id_class_code">Класс</label>
+            <select id="id_class_code" name="class_code" class="form-select">
+              <option value="">Все</option>
+              {% for class_code in filter_options.classes %}
+                <option value="{{ class_code }}" {% if filters.class_code == class_code %}selected{% endif %}>{{ class_code }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-6 col-lg-2">
+            <label class="form-label" for="id_teacher">Учитель</label>
+            <select id="id_teacher" name="teacher" class="form-select">
+              <option value="">Все</option>
+              {% for teacher in filter_options.teachers %}
+                <option value="{{ teacher }}" {% if filters.teacher == teacher %}selected{% endif %}>{{ teacher }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-6 col-lg-1">
+            <label class="form-label" for="id_problem_type">Проблема</label>
+            <select id="id_problem_type" name="problem_type" class="form-select">
+              <option value="">Все</option>
+              {% for value, label in problem_type_choices %}
+                <option value="{{ value }}" {% if filters.problem_type == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 d-flex flex-wrap gap-2">
+            <button class="btn btn-primary" type="submit">Применить</button>
+            <a class="btn btn-outline-secondary" href="{% url 'journal_links:descriptor_criteria_fill_report' %}">Сбросить</a>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="row g-3 mb-4">
+      <div class="col-12 col-md-6 col-xl-3"><div class="card h-100"><div class="card-body"><div class="text-secondary small">Дата запуска</div><div class="fw-semibold">{{ summary.started_at }}</div></div></div></div>
+      <div class="col-12 col-md-6 col-xl-3"><div class="card h-100"><div class="card-body"><div class="text-secondary small">Тип запуска</div><div class="fw-semibold">{{ summary.trigger }}</div></div></div></div>
+      <div class="col-12 col-md-6 col-xl-3"><div class="card h-100"><div class="card-body"><div class="text-secondary small">Статус</div><div class="fw-semibold">{{ summary.status }}</div></div></div></div>
+      <div class="col-12 col-md-6 col-xl-3"><div class="card h-100"><div class="card-body"><div class="text-secondary small">Классов проверено</div><div class="display-6">{{ summary.classes_checked }}</div></div></div></div>
+      <div class="col-12 col-md-6 col-xl-3"><div class="card h-100"><div class="card-body"><div class="text-secondary small">Предметов проверено</div><div class="display-6">{{ summary.subjects_checked }}</div></div></div></div>
+      <div class="col-12 col-md-6 col-xl-3"><div class="card h-100"><div class="card-body"><div class="text-secondary small">Полностью заполнено</div><div class="display-6">{{ summary.fully_filled }}</div></div></div></div>
+      <div class="col-12 col-md-6 col-xl-3"><div class="card h-100"><div class="card-body"><div class="text-secondary small">Есть проблемы</div><div class="display-6">{{ summary.with_problems }}</div></div></div></div>
+      <div class="col-12 col-md-6 col-xl-3"><div class="card h-100"><div class="card-body"><div class="text-secondary small">Дескрипторы не заполнены</div><div class="display-6">{{ summary.descriptors_missing }}</div></div></div></div>
+      <div class="col-12 col-md-6 col-xl-3"><div class="card h-100"><div class="card-body"><div class="text-secondary small">Критерии не заполнены</div><div class="display-6">{{ summary.criteria_missing }}</div></div></div></div>
+      <div class="col-12 col-md-6 col-xl-3"><div class="card h-100"><div class="card-body"><div class="text-secondary small">Оценки не проставлены</div><div class="display-6">{{ summary.grades_missing }}</div></div></div></div>
+    </section>
+
+    {% if problem_total == 0 %}
+      <section class="alert alert-success shadow-sm" role="status">Проблем не найдено.</section>
+    {% endif %}
+
+    <section class="card mb-4">
+      <div class="card-body">
+        <h2 class="h5 mb-3">По учителям</h2>
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Учитель</th>
+                <th>Незаполненные дескрипторы</th>
+                <th>Незаполненные критерии</th>
+                <th>Непроставленные оценки</th>
+                <th>Всего проблем</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for teacher in teacher_groups %}
+                <tr>
+                  <td>{{ teacher.teacher_name }}</td>
+                  <td>{{ teacher.descriptor_count }}</td>
+                  <td>{{ teacher.criteria_count }}</td>
+                  <td>{{ teacher.grades_count }}</td>
+                  <td class="fw-semibold">{{ teacher.total }}</td>
+                </tr>
+              {% empty %}
+                <tr><td class="table-empty" colspan="5">Проблем не найдено.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="card mb-4">
+      <div class="card-body p-0">
+        <div class="p-3 border-bottom d-flex justify-content-between align-items-center gap-2">
+          <h2 class="h5 mb-0">Не заполнены дескрипторы</h2>
+          <span class="badge badge-soft badge-failed">{{ descriptor_rows|length }}</span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead><tr><th>Учитель</th><th>Класс</th><th>Предмет</th><th>Модуль</th><th>Статус дескриптора</th><th>Ссылка на таблицу</th></tr></thead>
+            <tbody>
+              {% for row in descriptor_rows %}
+                <tr>
+                  <td>{{ row.teacher_name }}</td>
+                  <td>{{ row.class_code }}</td>
+                  <td>{{ row.subject_name }}</td>
+                  <td>{{ row.module_number }}</td>
+                  <td>{{ row.descriptor_status_label }}</td>
+                  <td>{% if row.sheet_url %}<a href="{{ row.sheet_url }}" target="_blank" rel="noopener">Открыть</a>{% else %}—{% endif %}</td>
+                </tr>
+              {% empty %}
+                <tr><td class="table-empty" colspan="6">Проблем не найдено.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="card mb-4">
+      <div class="card-body p-0">
+        <div class="p-3 border-bottom d-flex justify-content-between align-items-center gap-2">
+          <h2 class="h5 mb-0">Не заполнены критерии</h2>
+          <span class="badge badge-soft badge-partial">{{ criteria_rows|length }}</span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead><tr><th>Учитель</th><th>Класс</th><th>Предмет</th><th>Модуль</th><th>Статус критериев</th><th>Ссылка на таблицу</th></tr></thead>
+            <tbody>
+              {% for row in criteria_rows %}
+                <tr>
+                  <td>{{ row.teacher_name }}</td>
+                  <td>{{ row.class_code }}</td>
+                  <td>{{ row.subject_name }}</td>
+                  <td>{{ row.module_number }}</td>
+                  <td>{{ row.criteria_status_label }}</td>
+                  <td>{% if row.sheet_url %}<a href="{{ row.sheet_url }}" target="_blank" rel="noopener">Открыть</a>{% else %}—{% endif %}</td>
+                </tr>
+              {% empty %}
+                <tr><td class="table-empty" colspan="6">Проблем не найдено.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-body p-0">
+        <div class="p-3 border-bottom d-flex justify-content-between align-items-center gap-2">
+          <h2 class="h5 mb-0">Не проставлены оценки</h2>
+          <span class="badge badge-soft badge-failed">{{ grades_rows|length }}</span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead><tr><th>Учитель</th><th>Класс</th><th>Предмет</th><th>Модуль</th><th>Оценки</th><th>Не хватает оценок</th><th>Ссылка на таблицу</th></tr></thead>
+            <tbody>
+              {% for row in grades_rows %}
+                <tr>
+                  <td>{{ row.teacher_name }}</td>
+                  <td>{{ row.class_code }}</td>
+                  <td>{{ row.subject_name }}</td>
+                  <td>{{ row.module_number }}</td>
+                  <td>{{ row.grades_ratio }} · {{ row.grades_status_label }}</td>
+                  <td>{{ row.grades_missing }}</td>
+                  <td>{% if row.sheet_url %}<a href="{{ row.sheet_url }}" target="_blank" rel="noopener">Открыть</a>{% else %}—{% endif %}</td>
+                </tr>
+              {% empty %}
+                <tr><td class="table-empty" colspan="7">Проблем не найдено.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  {% endif %}
+{% endblock %}

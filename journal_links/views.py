@@ -1,10 +1,15 @@
-from django.contrib.auth.decorators import login_required
+import csv
+from datetime import timedelta
+
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
+
 from admin_panel.authz import permission_required_403
 from admin_panel.google_oauth import (
     GOOGLE_OAUTH_CODE_VERIFIER_SESSION_KEY,
@@ -22,6 +27,25 @@ from validation.descriptor_criteria_fill import (
 )
 from validation.job_runner import run_check_missing_data_job, run_validation_job
 
+from .descriptor_fill_report import (
+    CSV_HEADERS,
+    PROBLEM_TYPE_CHOICES,
+    RECENT_RUN_LIMIT,
+    REPORT_JOB_TYPE,
+    REPORT_STATUSES,
+    REPORT_STATUS_VALUES,
+    STATUS_CHOICES,
+    build_problem_export_rows,
+    build_summary,
+    build_teacher_groups,
+    criteria_problem_rows,
+    descriptor_problem_rows,
+    filter_options,
+    filter_rows,
+    grades_problem_rows,
+    rows_from_job_run,
+    run_choice_label,
+)
 from .forms import ClassSheetLinkForm, DescriptorCriteriaCheckScheduleForm, DescriptorCriteriaReportTargetForm
 from .models import ClassSheetLink, DescriptorCriteriaCheckSchedule, DescriptorCriteriaReportTarget
 
@@ -82,6 +106,62 @@ def _descriptor_criteria_filter_options(rows: list[dict]) -> dict[str, list[str]
     }
 
 
+def _descriptor_fill_report_data(request) -> dict:
+    status = _non_empty(request.GET.get("status"))
+    if status not in REPORT_STATUS_VALUES:
+        status = ""
+    problem_type = _non_empty(request.GET.get("problem_type"))
+    if problem_type not in {"descriptor", "criteria", "grades"}:
+        problem_type = ""
+
+    report_runs = JobRun.objects.filter(
+        job_type=REPORT_JOB_TYPE,
+        status__in=REPORT_STATUSES,
+    ).order_by("-started_at", "-id")
+    filtered_runs = report_runs.filter(status=status) if status else report_runs
+    run_choices = [
+        {"id": str(job_run.id), "label": run_choice_label(job_run)}
+        for job_run in filtered_runs[:RECENT_RUN_LIMIT]
+    ]
+
+    selected_run_id = _non_empty(request.GET.get("run_id"))
+    if selected_run_id:
+        job_run = get_object_or_404(report_runs, id=selected_run_id)
+    else:
+        job_run = filtered_runs.first()
+
+    rows = rows_from_job_run(job_run)
+    class_code = _non_empty(request.GET.get("class_code"))
+    teacher = _non_empty(request.GET.get("teacher"))
+    filtered_rows = filter_rows(rows, class_code=class_code, teacher=teacher)
+    descriptor_rows = descriptor_problem_rows(filtered_rows, problem_type=problem_type)
+    criteria_rows = criteria_problem_rows(filtered_rows, problem_type=problem_type)
+    grades_rows = grades_problem_rows(filtered_rows, problem_type=problem_type)
+    problem_total = len(descriptor_rows) + len(criteria_rows) + len(grades_rows)
+
+    return {
+        "job_run": job_run,
+        "run_choices": run_choices,
+        "summary": build_summary(job_run, filtered_rows),
+        "descriptor_rows": descriptor_rows,
+        "criteria_rows": criteria_rows,
+        "grades_rows": grades_rows,
+        "teacher_groups": build_teacher_groups(filtered_rows, problem_type=problem_type),
+        "filter_options": filter_options(rows),
+        "problem_total": problem_total,
+        "status_choices": STATUS_CHOICES,
+        "problem_type_choices": PROBLEM_TYPE_CHOICES,
+        "filters": {
+            "run_id": str(job_run.id) if job_run else selected_run_id,
+            "class_code": class_code,
+            "teacher": teacher,
+            "problem_type": problem_type,
+            "status": status,
+        },
+        "querystring": request.GET.urlencode(),
+    }
+
+
 @login_required
 @permission_required_403("journal_links.view_classsheetlink", message="Доступ запрещён: нет прав на просмотр ссылок классов.")
 def list_links(request):
@@ -139,12 +219,16 @@ def descriptor_criteria_fill_check(request):
         action = _non_empty(request.POST.get("action")) or "run_check"
         if action == "save_schedule":
             was_enabled = schedule.is_enabled
+            previous_interval_minutes = schedule.interval_minutes
             schedule_form = DescriptorCriteriaCheckScheduleForm(request.POST, instance=schedule)
             if schedule_form.is_valid():
                 schedule = schedule_form.save(commit=False)
                 schedule.updated_by = request.user if request.user.is_authenticated else None
+                interval_changed = schedule.interval_minutes != previous_interval_minutes
                 if schedule.is_enabled and (not was_enabled or schedule.next_run_at is None):
                     schedule.next_run_at = timezone.now()
+                elif schedule.is_enabled and interval_changed:
+                    schedule.next_run_at = timezone.now() + timedelta(minutes=schedule.interval_minutes)
                 schedule.save()
                 messages.success(request, "Настройки автопроверки сохранены.")
                 return redirect("journal_links:descriptor_criteria_fill_check")
@@ -198,6 +282,38 @@ def descriptor_criteria_fill_check(request):
             "schedule_form": schedule_form,
         },
     )
+
+
+@login_required
+@permission_required_403("jobs.view_jobrun", message="Доступ запрещён: нет прав на просмотр отчета заполненности.")
+def descriptor_criteria_fill_report(request):
+    return render(
+        request,
+        "journal_links/descriptor_criteria_fill_report.html",
+        _descriptor_fill_report_data(request),
+    )
+
+
+@login_required
+@permission_required_403("jobs.view_jobrun", message="Доступ запрещён: нет прав на экспорт отчета заполненности.")
+def descriptor_criteria_fill_report_csv(request):
+    report_data = _descriptor_fill_report_data(request)
+    job_run = report_data["job_run"]
+    rows = filter_rows(
+        rows_from_job_run(job_run),
+        class_code=report_data["filters"]["class_code"],
+        teacher=report_data["filters"]["teacher"],
+    )
+    export_rows = build_problem_export_rows(rows, problem_type=report_data["filters"]["problem_type"])
+
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    filename = f"descriptor-fill-report-{job_run.id}.csv" if job_run else "descriptor-fill-report.csv"
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    response.write("\ufeff")
+    writer = csv.DictWriter(response, fieldnames=CSV_HEADERS)
+    writer.writerow({header: header for header in CSV_HEADERS})
+    writer.writerows(export_rows)
+    return response
 
 
 @login_required

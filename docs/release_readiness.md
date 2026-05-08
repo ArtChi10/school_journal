@@ -24,6 +24,7 @@ Use this checklist before promoting the production Docker Compose stack.
 - [ ] `proxy` container is running.
 - [ ] HTTP smoke URL `/` opens.
 - [ ] HTTP smoke URL `/links/` opens.
+- [ ] HTTP smoke URL `/links/fill-check-report/` opens.
 - [ ] HTTP smoke URL `/runs/` opens.
 - [ ] HTTP smoke URL `/healthz` returns `ok`.
 - [ ] HTTP smoke URL `/readyz` returns `ok`.
@@ -36,9 +37,11 @@ Use this checklist before promoting the production Docker Compose stack.
 - [ ] GitHub Actions CD health check passes against the forwarded HTTP `/healthz` URL.
 - [ ] If descriptor/criteria Google report export is used, an active report target is configured and the OAuth token has Google Sheets write scope.
 - [ ] Descriptor/criteria scheduler worker is present in the active compose file before enabling автопроверка.
-- [ ] Автопроверка toggle starts scheduled descriptor, criteria, and grades checks every 90 minutes.
+- [ ] Автопроверка toggle starts scheduled descriptor, criteria, and grades checks with the configured interval; default is 30 minutes.
 - [ ] Scheduled descriptor checks do not overlap existing pending/running checks.
 - [ ] Scheduled checks do not run AI or send Telegram notifications.
+- [ ] `Отчет заполненности` reads the latest or selected `descriptor_criteria_fill_check` JobRun without starting a new check.
+- [ ] `Отчет заполненности` shows descriptor, criteria, grades, teacher grouping, and CSV export.
 - [ ] If AI criteria review is used, `OPENAI_API_KEY` is configured in production.
 - [ ] If AI criteria Google report export is used, an active AI report target is configured separately from the descriptor report.
 - [ ] AI criteria review sends one batch AI request per class and skips empty/numeric-only criteria.

@@ -110,11 +110,23 @@ class DescriptorCriteriaReportTargetForm(forms.ModelForm):
 class DescriptorCriteriaCheckScheduleForm(forms.ModelForm):
     class Meta:
         model = DescriptorCriteriaCheckSchedule
-        fields = ["is_enabled"]
+        fields = ["is_enabled", "interval_minutes"]
         labels = {
             "is_enabled": "Включить автопроверку",
+            "interval_minutes": "Интервал, минут",
+        }
+        help_texts = {
+            "interval_minutes": "Минимум 1 минута. Например: 30.",
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["is_enabled"].widget.attrs.setdefault("class", "form-check-input")
+        self.fields["interval_minutes"].min_value = 1
+        self.fields["interval_minutes"].widget.attrs.update(
+            {
+                "class": "form-control",
+                "min": "1",
+                "step": "1",
+            }
+        )

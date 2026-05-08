@@ -49,7 +49,7 @@ class DescriptorCriteriaSchedulerTests(TestCase):
         self.assertEqual(JobRun.objects.filter(job_type=JOB_TYPE).count(), 1)
         self.assertEqual(job_run.params_json["trigger"], "scheduled")
         self.assertEqual(job_run.params_json["schedule_id"], schedule.id)
-        self.assertEqual(job_run.params_json["interval_minutes"], 90)
+        self.assertEqual(job_run.params_json["interval_minutes"], 30)
         self.assertTrue(job_run.logs.filter(message="Scheduled check started").exists())
         self.assertTrue(job_run.logs.filter(message="Scheduled check finished").exists())
 
@@ -83,4 +83,4 @@ class DescriptorCriteriaSchedulerTests(TestCase):
         self.assertEqual(schedule.last_started_at, now)
         self.assertEqual(schedule.last_job_run, job_run)
         self.assertEqual(schedule.last_finished_at, job_run.finished_at)
-        self.assertEqual(schedule.next_run_at, job_run.finished_at + timedelta(minutes=90))
+        self.assertEqual(schedule.next_run_at, job_run.finished_at + timedelta(minutes=30))
