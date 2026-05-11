@@ -39,6 +39,7 @@ Use this checklist before promoting the production Docker Compose stack.
 - [ ] Descriptor/criteria scheduler worker is present in the active compose file before enabling автопроверка.
 - [ ] Автопроверка toggle starts scheduled descriptor, criteria, and grades checks with the configured interval; default is 30 minutes.
 - [ ] Scheduled descriptor checks do not overlap existing pending/running checks.
+- [ ] Scheduled descriptor checks mark active checks older than the configured stale-run timeout as failed; default is 120 minutes.
 - [ ] Scheduled checks do not run AI or send Telegram notifications.
 - [ ] `Отчет заполненности` reads the latest or selected `descriptor_criteria_fill_check` JobRun without starting a new check.
 - [ ] `Отчет заполненности` shows descriptor, criteria, grades, teacher grouping, and CSV export.

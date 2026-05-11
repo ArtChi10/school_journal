@@ -150,9 +150,10 @@ In Docker Compose it runs as the `scheduler` service and checks the database eve
 - Open `Классы и таблицы` -> `Проверить дескрипторы, критерии и оценки`.
 - Enable or disable `Включить автопроверку`.
 - Set `Интервал, минут`; the default is `30` minutes.
+- Set `Таймаут зависшего запуска, минут`; the default is `120` minutes.
 - `Запустить сейчас` starts one manual check even when the toggle is off.
 
-The worker skips a scheduled run if another `descriptor_criteria_fill_check` job is still `pending` or `running`, so it does not create overlapping JobRun records. Scheduled JobRun records include `trigger=scheduled` in `params_json`; manual runs include `trigger=manual`.
+The worker skips a scheduled run if another `descriptor_criteria_fill_check` job is still `pending` or `running`, so it does not create overlapping JobRun records. If an active check is older than the configured stale-run timeout, the worker marks that JobRun as `failed`, writes a `Descriptor/criteria fill check timed out` JobLog entry, and allows the next scheduled check to start. Scheduled JobRun records include `trigger=scheduled` in `params_json`; manual runs include `trigger=manual`.
 
 The read-only UI report is available at `Отчет заполненности` or `/links/fill-check-report/`. It reads the latest or selected `descriptor_criteria_fill_check` JobRun, shows summary counters, problem sections, teacher grouping, and CSV export. Opening this report does not start a new check, does not run AI, and does not send Telegram notifications. The scheduled worker and Google Spreadsheet report continue to run separately.
 

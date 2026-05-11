@@ -391,13 +391,19 @@ class DescriptorCriteriaFillViewTests(TestCase):
     def test_schedule_toggle_saves_enabled_state(self):
         response = self.client.post(
             reverse("journal_links:descriptor_criteria_fill_check"),
-            {"action": "save_schedule", "is_enabled": "on", "interval_minutes": "30"},
+            {
+                "action": "save_schedule",
+                "is_enabled": "on",
+                "interval_minutes": "30",
+                "active_job_timeout_minutes": "120",
+            },
         )
 
         self.assertEqual(response.status_code, 302)
         schedule = DescriptorCriteriaCheckSchedule.load()
         self.assertTrue(schedule.is_enabled)
         self.assertEqual(schedule.interval_minutes, 30)
+        self.assertEqual(schedule.active_job_timeout_minutes, 120)
         self.assertEqual(schedule.updated_by, self.user)
         self.assertIsNotNone(schedule.next_run_at)
 
@@ -412,7 +418,12 @@ class DescriptorCriteriaFillViewTests(TestCase):
         with patch("journal_links.views.timezone.now", return_value=now):
             response = self.client.post(
                 reverse("journal_links:descriptor_criteria_fill_check"),
-                {"action": "save_schedule", "is_enabled": "on", "interval_minutes": "45"},
+                {
+                    "action": "save_schedule",
+                    "is_enabled": "on",
+                    "interval_minutes": "45",
+                    "active_job_timeout_minutes": "120",
+                },
             )
 
         self.assertEqual(response.status_code, 302)
@@ -426,6 +437,7 @@ class DescriptorCriteriaFillViewTests(TestCase):
         self.assertContains(response, "Автопроверка дескрипторов, критериев и оценок")
         self.assertContains(response, "Включить автопроверку")
         self.assertContains(response, "Интервал, минут")
+        self.assertContains(response, "Таймаут зависшего запуска")
         self.assertContains(response, "Запустить сейчас")
 
     def test_page_renders_summary_table_and_filters(self):

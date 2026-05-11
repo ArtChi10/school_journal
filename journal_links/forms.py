@@ -110,13 +110,15 @@ class DescriptorCriteriaReportTargetForm(forms.ModelForm):
 class DescriptorCriteriaCheckScheduleForm(forms.ModelForm):
     class Meta:
         model = DescriptorCriteriaCheckSchedule
-        fields = ["is_enabled", "interval_minutes"]
+        fields = ["is_enabled", "interval_minutes", "active_job_timeout_minutes"]
         labels = {
             "is_enabled": "Включить автопроверку",
             "interval_minutes": "Интервал, минут",
+            "active_job_timeout_minutes": "Таймаут зависшего запуска, минут",
         }
         help_texts = {
             "interval_minutes": "Минимум 1 минута. Например: 30.",
+            "active_job_timeout_minutes": "Если запуск висит дольше этого времени, scheduler пометит его failed.",
         }
 
     def __init__(self, *args, **kwargs):
@@ -130,3 +132,23 @@ class DescriptorCriteriaCheckScheduleForm(forms.ModelForm):
                 "step": "1",
             }
         )
+        self.fields["active_job_timeout_minutes"].min_value = 1
+        self.fields["active_job_timeout_minutes"].widget.attrs.update(
+            {
+                "class": "form-control",
+                "min": "1",
+                "step": "1",
+            }
+        )
+
+    def clean_active_job_timeout_minutes(self):
+        value = self.cleaned_data["active_job_timeout_minutes"]
+        if value < 1:
+            raise forms.ValidationError("Введите значение не меньше 1.")
+        return value
+
+    def clean_interval_minutes(self):
+        value = self.cleaned_data["interval_minutes"]
+        if value < 1:
+            raise forms.ValidationError("Введите значение не меньше 1.")
+        return value

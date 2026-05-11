@@ -4,7 +4,7 @@ from unittest.mock import Mock
 from django.test import TestCase
 from django.utils import timezone
 
-from jobs.models import JobRun
+from jobs.models import JobLog, JobRun
 from journal_links.models import DescriptorCriteriaCheckSchedule
 from validation.descriptor_criteria_fill import JOB_TYPE
 from validation.descriptor_criteria_scheduler import (
@@ -50,6 +50,7 @@ class DescriptorCriteriaSchedulerTests(TestCase):
         self.assertEqual(job_run.params_json["trigger"], "scheduled")
         self.assertEqual(job_run.params_json["schedule_id"], schedule.id)
         self.assertEqual(job_run.params_json["interval_minutes"], 30)
+        self.assertEqual(job_run.params_json["active_job_timeout_minutes"], 120)
         self.assertTrue(job_run.logs.filter(message="Scheduled check started").exists())
         self.assertTrue(job_run.logs.filter(message="Scheduled check finished").exists())
 
@@ -69,6 +70,33 @@ class DescriptorCriteriaSchedulerTests(TestCase):
         self.assertEqual(JobRun.objects.filter(job_type=JOB_TYPE).count(), 1)
         schedule.refresh_from_db()
         self.assertEqual(schedule.next_run_at, now + timedelta(minutes=OVERLAP_RETRY_MINUTES))
+
+    def test_stale_running_job_is_failed_before_new_schedule_starts(self):
+        now = timezone.now()
+        schedule = DescriptorCriteriaCheckSchedule.load()
+        schedule.is_enabled = True
+        schedule.next_run_at = now - timedelta(minutes=1)
+        schedule.active_job_timeout_minutes = 120
+        schedule.save()
+        stale_job = JobRun.objects.create(
+            job_type=JOB_TYPE,
+            status=JobRun.Status.RUNNING,
+            started_at=now - timedelta(minutes=121),
+            result_json={"summary": {"old": True}},
+        )
+
+        job_run = run_due_descriptor_criteria_schedule(now=now, runner=self._successful_runner)
+
+        self.assertIsNotNone(job_run)
+        self.assertNotEqual(job_run.id, stale_job.id)
+        stale_job.refresh_from_db()
+        self.assertEqual(stale_job.status, JobRun.Status.FAILED)
+        self.assertEqual(stale_job.finished_at, now)
+        self.assertEqual(stale_job.result_json["timeout"]["timeout_minutes"], 120)
+        self.assertTrue(
+            JobLog.objects.filter(job_run=stale_job, message="Descriptor/criteria fill check timed out").exists()
+        )
+        self.assertEqual(JobRun.objects.filter(job_type=JOB_TYPE).count(), 2)
 
     def test_successful_run_updates_schedule_times(self):
         now = timezone.now()

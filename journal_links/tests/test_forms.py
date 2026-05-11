@@ -1,6 +1,6 @@
 from django.test import TestCase
 
-from journal_links.forms import ClassSheetLinkForm, DescriptorCriteriaReportTargetForm
+from journal_links.forms import ClassSheetLinkForm, DescriptorCriteriaCheckScheduleForm, DescriptorCriteriaReportTargetForm
 from journal_links.models import ClassSheetLink
 
 
@@ -129,3 +129,22 @@ class DescriptorCriteriaReportTargetFormTests(TestCase):
 
         self.assertFalse(form.is_valid())
         self.assertIn("google_sheet_url", form.errors)
+
+
+class DescriptorCriteriaCheckScheduleFormTests(TestCase):
+    def test_exposes_interval_and_timeout_fields(self):
+        form = DescriptorCriteriaCheckScheduleForm()
+
+        self.assertEqual(list(form.fields.keys()), ["is_enabled", "interval_minutes", "active_job_timeout_minutes"])
+
+    def test_rejects_zero_timeout(self):
+        form = DescriptorCriteriaCheckScheduleForm(
+            data={
+                "is_enabled": "on",
+                "interval_minutes": 30,
+                "active_job_timeout_minutes": 0,
+            }
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("active_job_timeout_minutes", form.errors)

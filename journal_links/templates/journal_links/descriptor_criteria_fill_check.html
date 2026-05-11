@@ -56,6 +56,8 @@
           <dl class="row mb-0">
             <dt class="col-sm-5">Интервал</dt>
             <dd class="col-sm-7">{{ schedule.interval_minutes }} минут</dd>
+            <dt class="col-sm-5">Таймаут зависшего запуска</dt>
+            <dd class="col-sm-7">{{ schedule.active_job_timeout_minutes }} минут</dd>
             <dt class="col-sm-5">Последний запуск</dt>
             <dd class="col-sm-7">{{ schedule.last_started_at|default:"—" }}</dd>
             <dt class="col-sm-5">Следующий запуск</dt>
@@ -83,6 +85,12 @@
               {{ schedule_form.interval_minutes }}
               {% if schedule_form.interval_minutes.help_text %}<div class="form-text">{{ schedule_form.interval_minutes.help_text }}</div>{% endif %}
               {% if schedule_form.interval_minutes.errors %}<div class="text-danger small mt-1">{{ schedule_form.interval_minutes.errors|join:", " }}</div>{% endif %}
+            </div>
+            <div>
+              <label class="form-label" for="{{ schedule_form.active_job_timeout_minutes.id_for_label }}">{{ schedule_form.active_job_timeout_minutes.label }}</label>
+              {{ schedule_form.active_job_timeout_minutes }}
+              {% if schedule_form.active_job_timeout_minutes.help_text %}<div class="form-text">{{ schedule_form.active_job_timeout_minutes.help_text }}</div>{% endif %}
+              {% if schedule_form.active_job_timeout_minutes.errors %}<div class="text-danger small mt-1">{{ schedule_form.active_job_timeout_minutes.errors|join:", " }}</div>{% endif %}
             </div>
             {% if schedule_form.non_field_errors %}
               <div class="alert alert-danger mb-0">{{ schedule_form.non_field_errors|join:", " }}</div>

@@ -4,6 +4,7 @@ import logging
 from collections.abc import Callable
 from datetime import timedelta
 
+from django.db.models import Q
 from django.utils import timezone
 
 from jobs.models import JobLog, JobRun
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 SCHEDULER_POLL_SECONDS = 60
 OVERLAP_RETRY_MINUTES = 5
 ACTIVE_JOB_STATUSES = [JobRun.Status.PENDING, JobRun.Status.RUNNING]
+DEFAULT_ACTIVE_JOB_TIMEOUT_MINUTES = 120
 
 
 DescriptorCriteriaRunner = Callable[..., JobRun]
@@ -25,6 +27,14 @@ def _next_run_after(base_time, interval_minutes: int):
     return base_time + timedelta(minutes=interval_minutes)
 
 
+def _positive_minutes(value: int | None, default: int) -> int:
+    try:
+        minutes = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(1, minutes)
+
+
 def _scheduled_params(schedule: DescriptorCriteriaCheckSchedule) -> dict:
     return {
         "class_code": None,
@@ -32,11 +42,51 @@ def _scheduled_params(schedule: DescriptorCriteriaCheckSchedule) -> dict:
         "trigger": "scheduled",
         "schedule_id": schedule.id,
         "interval_minutes": schedule.interval_minutes,
+        "active_job_timeout_minutes": schedule.active_job_timeout_minutes,
     }
 
 
 def _has_active_descriptor_criteria_job() -> bool:
     return JobRun.objects.filter(job_type=JOB_TYPE, status__in=ACTIVE_JOB_STATUSES).exists()
+
+
+def _mark_stale_active_descriptor_criteria_jobs(*, now, timeout_minutes: int) -> int:
+    timeout_minutes = _positive_minutes(timeout_minutes, DEFAULT_ACTIVE_JOB_TIMEOUT_MINUTES)
+    stale_before = now - timedelta(minutes=timeout_minutes)
+    stale_jobs = list(
+        JobRun.objects.filter(job_type=JOB_TYPE, status__in=ACTIVE_JOB_STATUSES)
+        .filter(Q(started_at__lt=stale_before) | Q(started_at__isnull=True))
+        .order_by("started_at", "id")
+    )
+    for job_run in stale_jobs:
+        previous_status = job_run.status
+        previous_started_at = job_run.started_at
+        result_json = job_run.result_json if isinstance(job_run.result_json, dict) else {}
+        result_json["error"] = "Descriptor/criteria fill check timed out"
+        result_json["timeout"] = {
+            "timeout_minutes": timeout_minutes,
+            "marked_failed_at": now.isoformat(),
+            "previous_status": previous_status,
+            "previous_started_at": previous_started_at.isoformat() if previous_started_at else None,
+        }
+        result_json.setdefault("summary", {})
+        result_json.setdefault("rows", [])
+        result_json.setdefault("tables", [])
+        job_run.status = JobRun.Status.FAILED
+        job_run.finished_at = now
+        job_run.result_json = result_json
+        job_run.save(update_fields=["status", "finished_at", "result_json"])
+        log_step(
+            job_run=job_run,
+            level=JobLog.Level.ERROR,
+            message="Descriptor/criteria fill check timed out",
+            context={
+                "timeout_minutes": timeout_minutes,
+                "previous_status": previous_status,
+                "previous_started_at": previous_started_at.isoformat() if previous_started_at else None,
+            },
+        )
+    return len(stale_jobs)
 
 
 def run_due_descriptor_criteria_schedule(
@@ -58,6 +108,13 @@ def run_due_descriptor_criteria_schedule(
 
     if schedule.next_run_at and schedule.next_run_at > now:
         return None
+
+    stale_count = _mark_stale_active_descriptor_criteria_jobs(
+        now=now,
+        timeout_minutes=schedule.active_job_timeout_minutes,
+    )
+    if stale_count:
+        logger.warning("Stale descriptor checks marked failed", extra={"stale_count": stale_count})
 
     if _has_active_descriptor_criteria_job():
         schedule.next_run_at = _next_run_after(now, OVERLAP_RETRY_MINUTES)
