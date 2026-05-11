@@ -1,9 +1,11 @@
+import json
 import tempfile
 from pathlib import Path
 
-from django.test import SimpleTestCase
+from django.test import TestCase
 from openpyxl import Workbook
 
+from pipeline.models import ValidCriterionTemplate
 from pipeline.services import (
     CriterionNormalizationError,
     WorkbookReadError,
@@ -62,7 +64,7 @@ class _FakeOpenAIClient:
         self.responses = _FakeResponses()
 
 
-class CriteriaExtractorServiceTests(SimpleTestCase):
+class CriteriaExtractorServiceTests(TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -142,9 +144,40 @@ class CriteriaExtractorServiceTests(SimpleTestCase):
 
         self.assertEqual(result["variants"], ["Estimate, add, and subtract integers"])
         self.assertIn("Английский язык сам по себе не является ошибкой", _CRITERION_EVALUATION_PROMPT)
+        self.assertIn("valid_criterion_examples", _CRITERION_EVALUATION_PROMPT)
         call = fake_client.responses.calls[0]
         self.assertIn("variants должны сохранять язык исходного критерия", call["input"][0]["content"])
         self.assertIn("Estimate, add, and subtract integers", call["input"][1]["content"])
+
+    def test_evaluate_criterion_text_with_ai_sends_active_whitelist_examples(self):
+        ValidCriterionTemplate.objects.create(
+            name="Estimate, add, subtract, multiply and divide integers",
+            keep_reason="Action-list criterion is measurable.",
+        )
+        ValidCriterionTemplate.objects.create(
+            name="Inactive criterion",
+            keep_reason="Should not be sent.",
+            is_active=False,
+        )
+        fake_client = _FakeOpenAIClient()
+        fake_client.responses.output_text = (
+            '{"verdict":"valid","why":"ok","fix":"-","variants":["Estimate and add integers"]}'
+        )
+
+        result = evaluate_criterion_text_with_ai("Estimate and add integers", client=fake_client)
+
+        self.assertEqual(result["verdict"], "valid")
+        payload = json.loads(fake_client.responses.calls[0]["input"][1]["content"])
+        self.assertEqual(payload["criterion"], "Estimate and add integers")
+        self.assertEqual(
+            payload["valid_criterion_examples"],
+            [
+                {
+                    "criterion": "Estimate, add, subtract, multiply and divide integers",
+                    "keep_reason": "Action-list criterion is measurable.",
+                }
+            ],
+        )
 
     def test_evaluate_criterion_text_with_ai_retries_once_on_bad_json(self):
         fake_client = _FakeOpenAIClient()

@@ -17,7 +17,7 @@ from openpyxl.utils.exceptions import InvalidFileException
 from jobs.models import JobLog, JobRun
 from jobs.services import log_step
 from journal_links.models import ClassSheetLink
-from pipeline.services import _get_openai_client
+from pipeline.services import _get_openai_client, get_active_valid_criterion_examples
 from validation.job_runner import fetch_workbook_for_link
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,11 @@ AI_CRITERIA_REVIEW_PROMPT = (
     "если действие наблюдаемо и измеримо.\n"
     "reason можно давать по-русски для администратора, но suggested_rewrite должен сохранять исходный язык критерия. "
     "Не переводи английский критерий на русский только ради улучшения формулировки.\n\n"
+    "Во входном JSON может быть valid_criterion_examples. "
+    "Это whitelist примеров, которые эксперт школы уже признал хорошими, с объяснением почему. "
+    "Используй их не как простую проверку точного совпадения, а как методический контекст: "
+    "если новый критерий похож по смыслу, структуре и измеримости на whitelist-пример, считай его ok, "
+    "если нет другой реальной проблемы.\n\n"
     "Верни строго JSON без markdown и лишнего текста:\n"
     "{\n"
     '  "criteria": [\n'
@@ -230,9 +235,11 @@ def _request_ai_class_criteria_review(
     *,
     ai_client,
     model_name: str,
+    whitelist_examples: list[dict[str, str]] | None = None,
 ) -> str:
     payload = {
         "class_code": criteria[0]["class_code"] if criteria else "",
+        "valid_criterion_examples": whitelist_examples or [],
         "criteria": [
             {
                 "index": index,
@@ -310,7 +317,13 @@ def evaluate_class_criteria_with_ai(
         return {}
     ai_client = client or _get_openai_client()
     model_name = model or os.getenv("OPENAI_CRITERIA_CLASS_REVIEW_MODEL") or os.getenv("OPENAI_CRITERIA_MODEL") or DEFAULT_AI_CRITERIA_REVIEW_MODEL
-    raw_response = _request_ai_class_criteria_review(criteria, ai_client=ai_client, model_name=model_name)
+    whitelist_examples = get_active_valid_criterion_examples()
+    raw_response = _request_ai_class_criteria_review(
+        criteria,
+        ai_client=ai_client,
+        model_name=model_name,
+        whitelist_examples=whitelist_examples,
+    )
     return parse_ai_class_criteria_response(raw_response, expected_count=len(criteria))
 
 

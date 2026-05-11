@@ -1,3 +1,4 @@
+import json
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -7,12 +8,14 @@ from openpyxl import Workbook
 
 from jobs.models import JobRun
 from journal_links.models import ClassSheetLink
+from pipeline.models import ValidCriterionTemplate
 from pipeline.ai_criteria_review import (
     AICriteriaReviewFormatError,
     AI_CRITERIA_REVIEW_PROMPT,
     JOB_TYPE,
     _request_ai_class_criteria_review,
     collect_ai_reviewable_criteria_from_workbook,
+    evaluate_class_criteria_with_ai,
     parse_ai_class_criteria_response,
     run_ai_criteria_class_review_job,
 )
@@ -94,6 +97,8 @@ class AICriteriaPromptTests(TestCase):
         self.assertIn("Английский язык сам по себе не является проблемой", AI_CRITERIA_REVIEW_PROMPT)
         self.assertIn("Не переводи английский критерий на русский", AI_CRITERIA_REVIEW_PROMPT)
         self.assertIn("base verb/action-list", AI_CRITERIA_REVIEW_PROMPT)
+        self.assertIn("valid_criterion_examples", AI_CRITERIA_REVIEW_PROMPT)
+        self.assertIn("методический контекст", AI_CRITERIA_REVIEW_PROMPT)
 
     def test_request_sends_language_rule_with_english_criterion(self):
         fake_client = _FakeAIClient()
@@ -116,6 +121,45 @@ class AICriteriaPromptTests(TestCase):
         call = fake_client.responses.calls[0]
         self.assertIn("Английский язык сам по себе не является проблемой", call["input"][0]["content"])
         self.assertIn("Estimate, add, and subtract integers", call["input"][1]["content"])
+
+    def test_evaluate_sends_active_whitelist_examples_as_ai_context(self):
+        ValidCriterionTemplate.objects.create(
+            name="Estimate, add, subtract, multiply and divide integers",
+            keep_reason="Action-list criterion is measurable and appropriate for the module.",
+        )
+        ValidCriterionTemplate.objects.create(
+            name="Inactive criterion",
+            keep_reason="Should not be sent.",
+            is_active=False,
+        )
+        fake_client = _FakeAIClient()
+
+        result = evaluate_class_criteria_with_ai(
+            [
+                {
+                    "class_code": "7A",
+                    "subject_name": "Math",
+                    "teacher_name": "Teacher A",
+                    "module_number": 2,
+                    "criterion_text": "Estimate and add integers",
+                }
+            ],
+            client=fake_client,
+            model="test-model",
+        )
+
+        self.assertEqual(result[1]["ai_verdict"], "ok")
+        payload = json.loads(fake_client.responses.calls[0]["input"][1]["content"])
+        self.assertEqual(payload["criteria"][0]["criterion"], "Estimate and add integers")
+        self.assertEqual(
+            payload["valid_criterion_examples"],
+            [
+                {
+                    "criterion": "Estimate, add, subtract, multiply and divide integers",
+                    "keep_reason": "Action-list criterion is measurable and appropriate for the module.",
+                }
+            ],
+        )
 
 
 class AICriteriaResponseParsingTests(TestCase):
