@@ -3,7 +3,9 @@ set -eu
 
 cd /app
 
-python manage.py migrate --noinput
-python manage.py collectstatic --noinput
+if [ "${DJANGO_RUN_STARTUP_TASKS:-1}" = "1" ]; then
+    python manage.py migrate --noinput
+    python manage.py collectstatic --noinput
+fi
 
 exec "$@"

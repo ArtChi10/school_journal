@@ -85,7 +85,7 @@ The stack starts:
 - `proxy`: Caddy HTTP reverse proxy on port `80`
 
 The `web` service waits for a healthy PostgreSQL service before starting.
-The `scheduler` service uses the same image and credentials volume as `web`, but runs only `python manage.py run_descriptor_criteria_scheduler`.
+The `scheduler` service uses the same image and credentials volume as `web`, but runs only `python manage.py run_descriptor_criteria_scheduler`. Startup migrations and static collection run in `web`; `scheduler` waits for healthy `web` and has `DJANGO_RUN_STARTUP_TASKS=0` to avoid concurrent migration attempts during deploy.
 
 ## Check Containers And Logs
 

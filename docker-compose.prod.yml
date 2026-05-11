@@ -55,6 +55,7 @@ services:
       - .env.production
     environment:
       DJANGO_DEBUG: "False"
+      DJANGO_RUN_STARTUP_TASKS: "0"
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
       DJANGO_STATIC_ROOT: /app/staticfiles
@@ -65,7 +66,7 @@ services:
       GOOGLE_OAUTH_TOKEN_PATH: /app/creds/google/token.json
       GOOGLE_SERVICE_ACCOUNT_JSON_PATH: /app/creds/service_account.json
     depends_on:
-      db:
+      web:
         condition: service_healthy
     volumes:
       - static_data:/app/staticfiles
