@@ -7,6 +7,7 @@ from openpyxl import Workbook
 from pipeline.services import (
     CriterionNormalizationError,
     WorkbookReadError,
+    _CRITERION_EVALUATION_PROMPT,
     add_ai_normalized_criteria,
     evaluate_criterion_text_with_ai,
     extract_raw_criteria_from_workbook,
@@ -130,6 +131,20 @@ class CriteriaExtractorServiceTests(SimpleTestCase):
             ["Сложная и двусмысленная формулировка", "Еще один критерий"],
         )
         self.assertEqual(len(fake_client.responses.calls), 2)
+
+    def test_evaluate_criterion_text_with_ai_preserves_english_language_rule(self):
+        fake_client = _FakeOpenAIClient()
+        fake_client.responses.output_text = (
+            '{"verdict":"valid","why":"ok","fix":"-","variants":["Estimate, add, and subtract integers"]}'
+        )
+
+        result = evaluate_criterion_text_with_ai("Estimate, add, and subtract integers", client=fake_client)
+
+        self.assertEqual(result["variants"], ["Estimate, add, and subtract integers"])
+        self.assertIn("Английский язык сам по себе не является ошибкой", _CRITERION_EVALUATION_PROMPT)
+        call = fake_client.responses.calls[0]
+        self.assertIn("variants должны сохранять язык исходного критерия", call["input"][0]["content"])
+        self.assertIn("Estimate, add, and subtract integers", call["input"][1]["content"])
 
     def test_evaluate_criterion_text_with_ai_retries_once_on_bad_json(self):
         fake_client = _FakeOpenAIClient()

@@ -9,7 +9,9 @@ from jobs.models import JobRun
 from journal_links.models import ClassSheetLink
 from pipeline.ai_criteria_review import (
     AICriteriaReviewFormatError,
+    AI_CRITERIA_REVIEW_PROMPT,
     JOB_TYPE,
+    _request_ai_class_criteria_review,
     collect_ai_reviewable_criteria_from_workbook,
     parse_ai_class_criteria_response,
     run_ai_criteria_class_review_job,
@@ -44,6 +46,24 @@ def _build_ai_review_workbook(path: Path) -> None:
     wb.save(path)
 
 
+class _FakeResponses:
+    def __init__(self):
+        self.calls = []
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+
+        class _Response:
+            output_text = '{"criteria":[{"index":1,"verdict":"ok","reason":"clear","suggested_rewrite":""}]}'
+
+        return _Response()
+
+
+class _FakeAIClient:
+    def __init__(self):
+        self.responses = _FakeResponses()
+
+
 class AICriteriaCollectionTests(TestCase):
     def test_collects_context_and_skips_empty_numeric_tutor_service(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -67,6 +87,35 @@ class AICriteriaCollectionTests(TestCase):
         self.assertEqual(rows[0]["module_number"], 2)
         self.assertEqual(rows[0]["criterion_text"], "Solves equations")
         self.assertEqual(rows[0]["sheet_url"], "https://docs.google.com/spreadsheets/d/source/edit")
+
+
+class AICriteriaPromptTests(TestCase):
+    def test_prompt_allows_english_criteria_without_translation(self):
+        self.assertIn("Английский язык сам по себе не является проблемой", AI_CRITERIA_REVIEW_PROMPT)
+        self.assertIn("Не переводи английский критерий на русский", AI_CRITERIA_REVIEW_PROMPT)
+        self.assertIn("base verb/action-list", AI_CRITERIA_REVIEW_PROMPT)
+
+    def test_request_sends_language_rule_with_english_criterion(self):
+        fake_client = _FakeAIClient()
+
+        result = _request_ai_class_criteria_review(
+            [
+                {
+                    "class_code": "7A",
+                    "subject_name": "Math",
+                    "teacher_name": "Teacher A",
+                    "module_number": 2,
+                    "criterion_text": "Estimate, add, and subtract integers",
+                }
+            ],
+            ai_client=fake_client,
+            model_name="test-model",
+        )
+
+        self.assertIn('"verdict":"ok"', result)
+        call = fake_client.responses.calls[0]
+        self.assertIn("Английский язык сам по себе не является проблемой", call["input"][0]["content"])
+        self.assertIn("Estimate, add, and subtract integers", call["input"][1]["content"])
 
 
 class AICriteriaResponseParsingTests(TestCase):
