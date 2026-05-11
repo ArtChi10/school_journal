@@ -90,6 +90,7 @@ class CriterionReviewEvent(models.Model):
 class ValidCriterionTemplate(models.Model):
     name = models.CharField(max_length=255)
     normalized_name = models.CharField(max_length=255, unique=True, editable=False)
+    keep_reason = models.TextField(blank=True, default="")
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

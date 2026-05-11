@@ -30,10 +30,14 @@ class CriterionEntryAdmin(admin.ModelAdmin):
 
 @admin.register(ValidCriterionTemplate)
 class ValidCriterionTemplateAdmin(admin.ModelAdmin):
-    list_display = ("name", "normalized_name", "is_active", "created_by", "updated_at")
+    list_display = ("name", "normalized_name", "keep_reason_preview", "is_active", "created_by", "updated_at")
     list_filter = ("is_active",)
-    search_fields = ("name", "normalized_name")
+    search_fields = ("name", "normalized_name", "keep_reason")
     readonly_fields = ("normalized_name", "created_at", "updated_at")
+
+    @admin.display(description="Почему оставляем")
+    def keep_reason_preview(self, obj):
+        return obj.keep_reason[:120]
 
 
 @admin.register(AICriteriaReportTarget)

@@ -251,11 +251,16 @@ class ValidCriteriaViewTests(TestCase):
         self.assertEqual(create_response.status_code, 302)
         template = ValidCriterionTemplate.objects.get(name="Итоговая работа")
         self.assertEqual(template.normalized_name, "итоговая работа")
+        self.assertEqual(template.keep_reason, "")
         self.assertEqual(template.created_by, self.user)
 
         edit_response = self.client.post(
             reverse("pipeline:valid_criterion_edit", args=[template.id]),
-            {"name": "  Итоговая   работа  ", "is_active": "on"},
+            {
+                "name": "  Итоговая   работа  ",
+                "keep_reason": "Хороший критерий: есть проверяемое действие и понятный результат.",
+                "is_active": "on",
+            },
         )
         self.assertEqual(edit_response.status_code, 302)
 
@@ -264,4 +269,25 @@ class ValidCriteriaViewTests(TestCase):
 
         template.refresh_from_db()
         self.assertEqual(template.normalized_name, "итоговая работа")
+        self.assertEqual(template.keep_reason, "Хороший критерий: есть проверяемое действие и понятный результат.")
         self.assertFalse(template.is_active)
+
+    def test_create_template_with_keep_reason_and_show_in_ui(self):
+        keep_reason = "Оставляем, потому что критерий конкретный, измеримый и понятен ученику."
+
+        create_response = self.client.post(
+            reverse("pipeline:valid_criterion_create"),
+            {"name": "Проектная защита", "keep_reason": keep_reason, "is_active": "on"},
+        )
+
+        self.assertEqual(create_response.status_code, 302)
+        template = ValidCriterionTemplate.objects.get(name="Проектная защита")
+        self.assertEqual(template.keep_reason, keep_reason)
+
+        list_response = self.client.get(reverse("pipeline:valid_criteria_list"))
+        self.assertContains(list_response, "Почему оставляем")
+        self.assertContains(list_response, keep_reason)
+
+        edit_response = self.client.get(reverse("pipeline:valid_criterion_edit", args=[template.id]))
+        self.assertContains(edit_response, "Почему оставляем")
+        self.assertContains(edit_response, keep_reason)

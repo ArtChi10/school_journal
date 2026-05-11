@@ -22,7 +22,7 @@
       <form method="post" class="row g-3">
         {% csrf_token %}
         {% for field in form %}
-          <div class="col-12 col-lg-6">
+          <div class="col-12{% if field.name != 'keep_reason' %} col-lg-6{% endif %}">
             <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
             {{ field }}
             {% for error in field.errors %}

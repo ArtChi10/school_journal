@@ -32,11 +32,21 @@ class ParentContactsImportForm(forms.Form):
 class ValidCriterionTemplateForm(forms.ModelForm):
     class Meta:
         model = ValidCriterionTemplate
-        fields = ["name", "is_active"]
+        fields = ["name", "keep_reason", "is_active"]
         labels = {
             "name": "Название критерия",
+            "keep_reason": "Почему оставляем",
             "is_active": "Активен",
         }
+        widgets = {
+            "keep_reason": forms.Textarea(attrs={"rows": 4}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["name"].widget.attrs.setdefault("class", "form-control")
+        self.fields["keep_reason"].widget.attrs.setdefault("class", "form-control")
+        self.fields["is_active"].widget.attrs.setdefault("class", "form-check-input")
 
 
 class AICriteriaReportTargetForm(forms.ModelForm):

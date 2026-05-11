@@ -16,6 +16,7 @@
               <th>ID</th>
               <th>Название</th>
               <th>Normalized</th>
+              <th>Почему оставляем</th>
               <th>Статус</th>
               <th>Создал</th>
               <th>Обновлён</th>
@@ -28,6 +29,7 @@
                 <td>{{ item.id }}</td>
                 <td>{{ item.name }}</td>
                 <td>{{ item.normalized_name }}</td>
+                <td>{{ item.keep_reason|default:"-"|truncatechars:120 }}</td>
                 <td>
                   {% if item.is_active %}
                     <span class="badge badge-soft badge-success">Активен</span>
@@ -50,7 +52,7 @@
                 </td>
               </tr>
             {% empty %}
-              <tr><td colspan="7" class="table-empty">Шаблонов пока нет.</td></tr>
+              <tr><td colspan="8" class="table-empty">Шаблонов пока нет.</td></tr>
             {% endfor %}
           </tbody>
         </table>
