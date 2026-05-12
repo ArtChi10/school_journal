@@ -15,7 +15,6 @@ from pipeline.services import (
     WorkbookReadError,
     evaluate_criterion_text_with_ai,
     extract_raw_criteria_from_workbook,
-    get_active_valid_criterion_examples,
 )
 from pipeline.services_download import run_download_descriptors_step
 
@@ -75,7 +74,6 @@ def run_build_criteria_job(
         active_valid_templates = set(
             ValidCriterionTemplate.objects.filter(is_active=True).values_list("normalized_name", flat=True)
         )
-        whitelist_examples = get_active_valid_criterion_examples()
         download_result = run_download_descriptors_step(links=links, job_run=job_run)
         downloaded = {
             item["link_id"]: item
@@ -134,10 +132,7 @@ def run_build_criteria_job(
                             )
                         else:
                             try:
-                                ai_result = evaluate_criterion_text_with_ai(
-                                    row["criterion_text"],
-                                    whitelist_examples=whitelist_examples,
-                                )
+                                ai_result = evaluate_criterion_text_with_ai(row["criterion_text"])
                                 ai_variants_json = ai_result.get("variants", [])
                                 criterion_text_ai = ai_variants_json[0] if ai_variants_json else ""
                                 ai_verdict = ai_result.get("verdict", "")

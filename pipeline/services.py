@@ -21,9 +21,6 @@ _EXCLUDED_HEADER_KEYWORDS = (
     "make-up",
 )
 _DEFAULT_NORMALIZATION_MODEL = "gpt-4.1-mini"
-_DEFAULT_WHITELIST_CONTEXT_LIMIT = 40
-_WHITELIST_CRITERION_TEXT_LIMIT = 500
-_WHITELIST_REASON_TEXT_LIMIT = 800
 _CRITERION_EVALUATION_PROMPT = (
     "Проанализируй предложенный критерий оценивания для школьного отчета об успеваемости. "
     "Твоя задача — определить, подходит ли он для критериального оценивания по правилам школы.\n\n"
@@ -33,11 +30,6 @@ _CRITERION_EVALUATION_PROMPT = (
     "и не переводи варианты на русский.\n"
     "why/fix можно давать по-русски для администратора, но variants должны сохранять язык исходного критерия. "
     "Если хороший английский критерий уже подходит, верни его же или короткое улучшение на английском.\n\n"
-    "Во входных данных может быть список valid_criterion_examples. "
-    "Это whitelist примеров, которые эксперт школы уже признал хорошими, с объяснением почему. "
-    "Используй их не только как точные совпадения, а как методический контекст: "
-    "критерии, похожие по смыслу, структуре и уровню измеримости на whitelist-примеры, считай valid, "
-    "если нет отдельной реальной проблемы.\n\n"
     "Проверяй критерий по этим пунктам:\n"
     "1) Сформулирован ли он как наблюдаемое действие или результат: для русского критерия обычно форма "
     "глагола 3-го лица и ответ на вопрос «что делает?», для английского допустимы base verb/action phrases.\n"
@@ -127,64 +119,6 @@ def _get_openai_client():
     return OpenAI()
 
 
-def _compact_ai_context_text(value: object, *, max_length: int) -> str:
-    text = re.sub(r"\s+", " ", str(value or "").replace("\xa0", " ")).strip()
-    if len(text) <= max_length:
-        return text
-    return text[: max_length - 1].rstrip() + "…"
-
-
-def _get_whitelist_context_limit() -> int:
-    raw_value = os.getenv("OPENAI_CRITERIA_WHITELIST_CONTEXT_LIMIT", str(_DEFAULT_WHITELIST_CONTEXT_LIMIT))
-    try:
-        return max(0, int(raw_value))
-    except (TypeError, ValueError):
-        return _DEFAULT_WHITELIST_CONTEXT_LIMIT
-
-
-def get_active_valid_criterion_examples(*, limit: int | None = None) -> list[dict[str, str]]:
-    """Return active whitelist criteria as compact AI context examples."""
-    max_items = _get_whitelist_context_limit() if limit is None else max(0, int(limit))
-    if max_items == 0:
-        return []
-
-    from pipeline.models import ValidCriterionTemplate
-
-    examples: list[dict[str, str]] = []
-    seen: set[str] = set()
-    queryset = ValidCriterionTemplate.objects.filter(is_active=True).order_by("-updated_at", "name")
-    for template in queryset[:max_items]:
-        criterion = _compact_ai_context_text(template.name, max_length=_WHITELIST_CRITERION_TEXT_LIMIT)
-        if not criterion:
-            continue
-        normalized = _normalize_text(criterion)
-        if normalized in seen:
-            continue
-        seen.add(normalized)
-        examples.append(
-            {
-                "criterion": criterion,
-                "keep_reason": _compact_ai_context_text(
-                    template.keep_reason,
-                    max_length=_WHITELIST_REASON_TEXT_LIMIT,
-                ),
-            }
-        )
-    return examples
-
-
-def _criterion_ai_user_payload(source_text: str, whitelist_examples: list[dict[str, str]]) -> str:
-    if not whitelist_examples:
-        return source_text
-    return json.dumps(
-        {
-            "criterion": source_text,
-            "valid_criterion_examples": whitelist_examples,
-        },
-        ensure_ascii=False,
-    )
-
-
 def _parse_ai_json_payload(payload: str) -> dict:
     raw = str(payload or "").strip()
     if not raw:
@@ -229,14 +163,12 @@ def _request_ai_criterion_evaluation(
     *,
     ai_client,
     model_name: str,
-    whitelist_examples: list[dict[str, str]] | None = None,
 ) -> str:
-    examples = whitelist_examples or []
     response = ai_client.responses.create(
         model=model_name,
         input=[
             {"role": "system", "content": _CRITERION_EVALUATION_PROMPT},
-            {"role": "user", "content": _criterion_ai_user_payload(source_text, examples)},
+            {"role": "user", "content": source_text},
         ],
         temperature=0,
     )
@@ -248,7 +180,6 @@ def evaluate_criterion_text_with_ai(
     *,
     client=None,
     model: str | None = None,
-    whitelist_examples: list[dict[str, str]] | None = None,
 ) -> dict:
     source_text = str(criterion_text or "").strip()
     if not source_text:
@@ -256,14 +187,12 @@ def evaluate_criterion_text_with_ai(
 
     ai_client = client or _get_openai_client()
     model_name = model or os.getenv("OPENAI_CRITERIA_MODEL", _DEFAULT_NORMALIZATION_MODEL)
-    examples = get_active_valid_criterion_examples() if whitelist_examples is None else whitelist_examples
 
     try:
         raw_response = _request_ai_criterion_evaluation(
             source_text,
             ai_client=ai_client,
             model_name=model_name,
-            whitelist_examples=examples,
         )
         return _parse_ai_json_payload(raw_response)
     except CriterionAIFormatError:
@@ -272,7 +201,6 @@ def evaluate_criterion_text_with_ai(
                 f"{source_text}\n\nВажно: верни только валидный JSON в заданном формате.",
                 ai_client=ai_client,
                 model_name=model_name,
-                whitelist_examples=examples,
             )
             return _parse_ai_json_payload(raw_response)
         except CriterionAIFormatError as exc:
@@ -288,7 +216,6 @@ def normalize_criterion_text_with_ai(
     *,
     client=None,
     model: str | None = None,
-    whitelist_examples: list[dict[str, str]] | None = None,
 ) -> str:
     """Normalize criterion wording via ChatGPT Responses API while preserving intent."""
     source_text = str(criterion_text or "").strip()
@@ -299,7 +226,6 @@ def normalize_criterion_text_with_ai(
         source_text,
         client=client,
         model=model,
-        whitelist_examples=whitelist_examples,
     )
     variants = result.get("variants") or []
     return str(variants[0]).strip() if variants else ""
@@ -312,7 +238,6 @@ def add_ai_normalized_criteria(
 ) -> list[dict]:
     """Return extracted rows enriched with `criterion_text_ai` for each row."""
     normalized_rows: list[dict] = []
-    whitelist_examples = get_active_valid_criterion_examples()
 
     for row in extracted_rows:
         enriched = dict(row)
@@ -320,7 +245,6 @@ def add_ai_normalized_criteria(
             enriched.get("criterion_text", ""),
             client=client,
             model=model,
-            whitelist_examples=whitelist_examples,
         )
         normalized_rows.append(enriched)
 
