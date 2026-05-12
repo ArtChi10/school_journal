@@ -17,6 +17,7 @@ from openpyxl.utils.exceptions import InvalidFileException
 from jobs.models import JobLog, JobRun
 from jobs.services import log_step
 from journal_links.models import ClassSheetLink
+from pipeline.models import ValidCriterionTemplate, normalize_criterion_name
 from pipeline.services import _get_openai_client
 from validation.job_runner import fetch_workbook_for_link
 
@@ -314,6 +315,42 @@ def evaluate_class_criteria_with_ai(
     return parse_ai_class_criteria_response(raw_response, expected_count=len(criteria))
 
 
+def _active_whitelist_reasons_by_name() -> dict[str, str]:
+    return {
+        normalized_name: keep_reason
+        for normalized_name, keep_reason in ValidCriterionTemplate.objects.filter(is_active=True).values_list(
+            "normalized_name",
+            "keep_reason",
+        )
+    }
+
+
+def _apply_whitelist_override(
+    row: dict[str, Any],
+    ai_result: dict[str, str],
+    whitelist_reasons: dict[str, str],
+) -> dict[str, Any]:
+    normalized_name = normalize_criterion_name(row.get("criterion_text", ""))
+    if normalized_name not in whitelist_reasons:
+        return ai_result
+
+    keep_reason = str(whitelist_reasons.get(normalized_name) or "").strip()
+    reason = "Критерий подтвержден whitelist."
+    if keep_reason:
+        reason = f"{reason} Почему оставляем: {keep_reason}"
+
+    return {
+        **ai_result,
+        "ai_verdict": "ok",
+        "ai_reason": reason,
+        "ai_suggested_rewrite": "",
+        "ai_whitelist_override": True,
+        "ai_original_verdict": ai_result.get("ai_verdict", ""),
+        "ai_original_reason": ai_result.get("ai_reason", ""),
+        "ai_original_suggested_rewrite": ai_result.get("ai_suggested_rewrite", ""),
+    }
+
+
 def _collect_links(*, class_code: str | None, all_active: bool) -> list[ClassSheetLink]:
     queryset = ClassSheetLink.objects.filter(is_active=True)
     if class_code:
@@ -421,12 +458,14 @@ def run_ai_criteria_class_review_job(
     criteria_skipped_numeric = 0
     criteria_ok = 0
     criteria_problem = 0
+    criteria_whitelist_overrides = 0
     ai_requests_total = 0
     ai_requests_failed = 0
     tables_success = 0
     tables_failed = 0
 
     try:
+        whitelist_reasons = _active_whitelist_reasons_by_name()
         for link in links:
             classes_checked.add(link.class_code)
             temp_file: Path | None = None
@@ -482,6 +521,9 @@ def run_ai_criteria_class_review_job(
                             "ai_reason": "AI не вернул результат для этого критерия.",
                             "ai_suggested_rewrite": "",
                         }
+                    ai_result = _apply_whitelist_override(row, ai_result, whitelist_reasons)
+                    if ai_result.get("ai_whitelist_override"):
+                        criteria_whitelist_overrides += 1
                     if ai_result["ai_verdict"] == "ok":
                         criteria_ok += 1
                     else:
@@ -517,6 +559,7 @@ def run_ai_criteria_class_review_job(
             "criteria_skipped_numeric": criteria_skipped_numeric,
             "criteria_ok": criteria_ok,
             "criteria_problem": criteria_problem,
+            "criteria_whitelist_overrides": criteria_whitelist_overrides,
             "ai_requests_total": ai_requests_total,
             "ai_requests_failed": ai_requests_failed,
             "tables_total": len(links),

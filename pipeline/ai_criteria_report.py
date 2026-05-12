@@ -116,6 +116,7 @@ def _summary_values(job_run: JobRun, *, report_status: str = "", report_updated_
         ("Пропущено числовых", summary.get("criteria_skipped_numeric", 0)),
         ("OK", summary.get("criteria_ok", 0)),
         ("Есть проблемы", summary.get("criteria_problem", 0)),
+        ("Снято whitelist", summary.get("criteria_whitelist_overrides", 0)),
         ("AI-запросов всего", summary.get("ai_requests_total", 0)),
         ("AI-запросов с ошибкой", summary.get("ai_requests_failed", 0)),
         ("Статус Google-отчета", report_status or report.get("status", "")),

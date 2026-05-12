@@ -31,6 +31,7 @@ def _job_run_with_ai_rows(*, status=JobRun.Status.SUCCESS) -> JobRun:
                 "criteria_skipped_numeric": 1,
                 "criteria_ok": 1,
                 "criteria_problem": 1,
+                "criteria_whitelist_overrides": 0,
                 "ai_requests_total": 1,
                 "ai_requests_failed": 0,
             },
@@ -108,6 +109,7 @@ class AICriteriaReportPayloadTests(TestCase):
         self.assertIn("Knows topic", problems["values"][1])
         summary = next(item for item in payload if item["title"] == SUMMARY_SHEET)
         self.assertIn(["Google-отчет обновлен", "6 мая 2026, 09:39:49 (Тбилиси)"], summary["values"])
+        self.assertIn(["Снято whitelist", 0], summary["values"])
 
     def test_write_payload_uses_batch_update_and_cell_hyperlinks(self):
         service = Mock()

@@ -7,6 +7,7 @@ from openpyxl import Workbook
 
 from jobs.models import JobRun
 from journal_links.models import ClassSheetLink
+from pipeline.models import ValidCriterionTemplate
 from pipeline.ai_criteria_review import (
     AICriteriaReviewFormatError,
     AI_CRITERIA_REVIEW_PROMPT,
@@ -178,6 +179,48 @@ class AICriteriaJobTests(TestCase):
         self.assertEqual(len(job_run.result_json["rows"]), 2)
         self.assertTrue(job_run.logs.filter(message="AI batch request started").exists())
         self.assertTrue(job_run.logs.filter(message="AI criteria review finished").exists())
+
+    def test_active_whitelist_overrides_problem_verdict_after_ai_response(self):
+        ValidCriterionTemplate.objects.create(
+            name="Explains   experiment result",
+            keep_reason="Это наблюдаемый и проверяемый результат.",
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = Path(tmpdir) / "criteria.xlsx"
+            _build_ai_review_workbook(workbook_path)
+
+            def _fake_ai(criteria, **_kwargs):
+                self.assertEqual(len(criteria), 2)
+                return {
+                    1: {"ai_verdict": "ok", "ai_reason": "clear", "ai_suggested_rewrite": ""},
+                    2: {
+                        "ai_verdict": "problem",
+                        "ai_reason": "too broad",
+                        "ai_suggested_rewrite": "Translate or rewrite.",
+                    },
+                }
+
+            with (
+                patch("pipeline.ai_criteria_review.fetch_workbook_for_link", return_value=workbook_path),
+                patch("pipeline.ai_criteria_review.evaluate_class_criteria_with_ai", side_effect=_fake_ai),
+            ):
+                job_run = run_ai_criteria_class_review_job(class_code="7A")
+
+        summary = job_run.result_json["summary"]
+        self.assertEqual(summary["criteria_ok"], 2)
+        self.assertEqual(summary["criteria_problem"], 0)
+        self.assertEqual(summary["criteria_whitelist_overrides"], 1)
+
+        overridden = next(row for row in job_run.result_json["rows"] if row["criterion_text"] == "Explains experiment result")
+        self.assertEqual(overridden["ai_verdict"], "ok")
+        self.assertTrue(overridden["ai_whitelist_override"])
+        self.assertEqual(overridden["ai_original_verdict"], "problem")
+        self.assertEqual(overridden["ai_original_reason"], "too broad")
+        self.assertEqual(overridden["ai_original_suggested_rewrite"], "Translate or rewrite.")
+        self.assertEqual(overridden["ai_suggested_rewrite"], "")
+        self.assertIn("Критерий подтвержден whitelist", overridden["ai_reason"])
+        self.assertIn("Это наблюдаемый и проверяемый результат", overridden["ai_reason"])
 
     def test_invalid_ai_json_marks_job_partial_without_losing_rows(self):
         with tempfile.TemporaryDirectory() as tmpdir:
