@@ -41,7 +41,17 @@ class LegacyDocxGenerator:
         spec.loader.exec_module(module)
         return module
 
-    def generate_for_workbook(self, workbook_path: Path, output_dir: Path, temp_dir: Path) -> list[str]:
+    def generate_for_workbook(
+        self,
+        workbook_path: Path,
+        output_dir: Path,
+        temp_dir: Path,
+        *,
+        module_number: int | None = None,
+        module_dates: str = "",
+        school_level: str = "secondary",
+        include_tutor: bool = True,
+    ) -> list[str]:
         """
         Generate per-student DOCX reports for a single workbook using legacy algorithms.
 
@@ -59,17 +69,25 @@ class LegacyDocxGenerator:
 
         try:
             # ensure shared modules are importable under names expected by legacy scripts
-            self._load_module("marks_dict", "marks_dict.py")
+            marks_file = "marks_dict.py" if school_level == "primary" else "marks_dict_upd.py"
+            self._load_module("marks_dict", marks_file)
             helpers = self._load_module("helpers", "helpers.py")
             generate_page = self._load_module("generate_page", "generate_page.py")
             legacy_main = self._load_module("legacy_main", "main.py")
 
             students = legacy_main.create_students_from_xlsx(str(workbook_path))
+            if module_number is not None:
+                for student in students:
+                    for subject in getattr(student, "subjects", []):
+                        subject.module = module_number
             headers = legacy_main.fill_header(
                 students,
                 str(self.template_path),
                 str(temp_dir),
                 str(workbook_path),
+                module_number=module_number,
+                module_dates=module_dates,
+                include_tutor=include_tutor,
             )
             subject_tables = generate_page.generate_subject(students, str(temp_dir))
 

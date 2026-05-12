@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block page_title %}Отчеты на проверку{% endblock %}
+{% block page_heading %}Отчеты на проверку{% endblock %}
+{% block extra_head %}
+  {% if job_run.status == "pending" or job_run.status == "running" %}
+    <meta http-equiv="refresh" content="10">
+  {% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0">
+      <li class="breadcrumb-item"><a href="{% url 'journal_links:list_links' %}">Классы и таблицы</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Отчеты на проверку</li>
+    </ol>
+  </nav>
+{% endblock %}
+
+{% block page_actions %}
+  {% if job_run %}
+    <a class="btn btn-outline-secondary" href="{% url 'job_run_detail' job_run.id %}">Открыть JobRun</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+  <section class="card mb-4">
+    <div class="card-body">
+      <form method="post" class="row g-3 align-items-end">
+        {% csrf_token %}
+        <div class="col-12 col-md-6 col-xl-3">
+          <label class="form-label" for="{{ form.class_sheet_link.id_for_label }}">{{ form.class_sheet_link.label }}</label>
+          {{ form.class_sheet_link }}
+          {{ form.class_sheet_link.errors }}
+        </div>
+        <div class="col-12 col-md-6 col-xl-4">
+          <label class="form-label" for="{{ form.drive_folder_url.id_for_label }}">{{ form.drive_folder_url.label }}</label>
+          {{ form.drive_folder_url }}
+          {{ form.drive_folder_url.errors }}
+        </div>
+        <div class="col-12 col-md-6 col-xl-2">
+          <label class="form-label" for="{{ form.module_number.id_for_label }}">{{ form.module_number.label }}</label>
+          {{ form.module_number }}
+          {{ form.module_number.errors }}
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+          <label class="form-label" for="{{ form.module_dates.id_for_label }}">{{ form.module_dates.label }}</label>
+          {{ form.module_dates }}
+          {{ form.module_dates.errors }}
+        </div>
+        <div class="col-12">
+          <button class="btn btn-primary" type="submit" {% if not perms.jobs.run_full_pipeline %}disabled{% endif %}>Сформировать DOCX-отчеты</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  {% if job_run %}
+    {% if job_run.status == "pending" or job_run.status == "running" %}
+      <section class="alert alert-info shadow-sm" role="status">Подготовка DOCX-отчетов выполняется. Страница обновляется автоматически.</section>
+    {% endif %}
+
+    <section class="row g-3 mb-4">
+      <div class="col-12 col-md-6 col-xl-2"><div class="card h-100"><div class="card-body"><div class="text-secondary small">Ученики</div><div class="display-6">{{ summary.students_found|default:0 }}</div></div></div></div>
+      <div class="col-12 col-md-6 col-xl-2"><div class="card h-100"><div class="card-body"><div class="text-secondary small">DOCX создано</div><div class="display-6">{{ summary.docx_created|default:0 }}</div></div></div></div>
+      <div class="col-12 col-md-6 col-xl-2"><div class="card h-100"><div class="card-body"><div class="text-secondary small">Загружено</div><div class="display-6">{{ summary.uploaded_success|default:0 }}</div></div></div></div>
+      <div class="col-12 col-md-6 col-xl-2"><div class="card h-100"><div class="card-body"><div class="text-secondary small">Обновлено</div><div class="display-6">{{ summary.uploaded_updated|default:0 }}</div></div></div></div>
+      <div class="col-12 col-md-6 col-xl-2"><div class="card h-100"><div class="card-body"><div class="text-secondary small">Ошибки</div><div class="display-6">{{ summary.errors|default:0 }}</div></div></div></div>
+      <div class="col-12 col-md-6 col-xl-2"><div class="card h-100"><div class="card-body"><div class="text-secondary small">Статус</div><div class="h4 mb-0">{{ job_run.status }}</div></div></div></div>
+    </section>
+
+    <section class="card mb-4">
+      <div class="card-body">
+        <dl class="row mb-0">
+          <dt class="col-sm-3">Класс</dt><dd class="col-sm-9">{{ result.class_code|default:"—" }}</dd>
+          <dt class="col-sm-3">Модуль</dt><dd class="col-sm-9">{{ result.module_number|default:"—" }}</dd>
+          <dt class="col-sm-3">Даты модуля</dt><dd class="col-sm-9">{{ result.module_dates|default:"—" }}</dd>
+          <dt class="col-sm-3">Drive-папка</dt><dd class="col-sm-9">{% if result.drive_folder_url %}<a href="{{ result.drive_folder_url }}" target="_blank" rel="noopener">Открыть</a>{% else %}—{% endif %}</dd>
+        </dl>
+      </div>
+    </section>
+
+    <section class="card mb-4">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead><tr><th>Файл</th><th>Действие</th><th>Ссылка</th></tr></thead>
+            <tbody>
+              {% for file in uploaded_files %}
+                <tr>
+                  <td>{{ file.name }}</td>
+                  <td>{{ file.action }}</td>
+                  <td>{% if file.link %}<a href="{{ file.link }}" target="_blank" rel="noopener">Открыть</a>{% else %}—{% endif %}</td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="3" class="table-empty">Загруженных файлов пока нет.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    {% if errors %}
+      <section class="card">
+        <div class="card-body">
+          <h2 class="h5">Ошибки</h2>
+          <ul class="mb-0">
+            {% for error in errors %}
+              <li>{{ error.name|default:"Общая ошибка" }}: {{ error.error }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </section>
+    {% endif %}
+  {% else %}
+    <section class="card">
+      <div class="card-body">
+        <p class="mb-0 text-secondary">Запусков подготовки отчетов пока нет.</p>
+      </div>
+    </section>
+  {% endif %}
+{% endblock %}

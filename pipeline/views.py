@@ -13,9 +13,16 @@ from jobs.models import JobRun
 from journal_links.models import ClassSheetLink
 from pipeline.ai_criteria_review import JOB_TYPE as AI_CRITERIA_REVIEW_JOB_TYPE, enqueue_ai_criteria_class_review_job
 from pipeline.audit import log_criterion_event
-from pipeline.forms import AICriteriaReportTargetForm, ParentContactForm, ParentContactsImportForm, ValidCriterionTemplateForm
+from pipeline.forms import (
+    AICriteriaReportTargetForm,
+    ParentContactForm,
+    ParentContactsImportForm,
+    StudentReviewReportsForm,
+    ValidCriterionTemplateForm,
+)
 from pipeline.models import AICriteriaReportTarget, CriterionEntry, CriterionReviewEvent, ParentContact, ValidCriterionTemplate
 from pipeline.parent_contacts import import_parent_contacts_csv
+from pipeline.student_review_reports import JOB_TYPE as STUDENT_REVIEW_REPORTS_JOB_TYPE, enqueue_prepare_student_review_reports_job
 
 
 def _parse_non_empty(value: str | None) -> str | None:
@@ -33,6 +40,14 @@ def _is_admin_role(user) -> bool:
 def _latest_ai_criteria_review_run() -> JobRun | None:
     return (
         JobRun.objects.filter(job_type=AI_CRITERIA_REVIEW_JOB_TYPE)
+        .order_by("-started_at", "-id")
+        .first()
+    )
+
+
+def _latest_student_review_reports_run() -> JobRun | None:
+    return (
+        JobRun.objects.filter(job_type=STUDENT_REVIEW_REPORTS_JOB_TYPE)
         .order_by("-started_at", "-id")
         .first()
     )
@@ -201,6 +216,52 @@ def ai_criteria_report_target(request):
         request,
         "pipeline/ai_criteria_report_target.html",
         {"form": form, "target": target},
+    )
+
+
+@login_required
+@permission_required_403("jobs.view_jobrun", message="Доступ запрещён: нет прав на просмотр отчетов на проверку.")
+def student_review_reports(request):
+    if request.method == "POST":
+        if not request.user.has_perm("jobs.run_full_pipeline"):
+            return HttpResponse("forbidden", status=403)
+        form = StudentReviewReportsForm(request.POST)
+        if form.is_valid():
+            link = form.cleaned_data["class_sheet_link"]
+            job_run = enqueue_prepare_student_review_reports_job(
+                class_sheet_link_id=link.id,
+                drive_folder_url=form.cleaned_data["drive_folder_url"],
+                module_number=form.cleaned_data["module_number"],
+                module_dates=form.cleaned_data["module_dates"],
+                initiated_by=request.user if request.user.is_authenticated else None,
+            )
+            messages.success(request, "Подготовка DOCX-отчетов запущена.")
+            return redirect(f"{reverse('pipeline:student_review_reports')}?run_id={job_run.id}")
+    else:
+        form = StudentReviewReportsForm()
+
+    requested_run_id = _parse_non_empty(request.GET.get("run_id"))
+    if requested_run_id:
+        job_run = get_object_or_404(JobRun, id=requested_run_id, job_type=STUDENT_REVIEW_REPORTS_JOB_TYPE)
+    else:
+        job_run = _latest_student_review_reports_run()
+
+    result = job_run.result_json if job_run and isinstance(job_run.result_json, dict) else {}
+    summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
+    errors = result.get("errors") if isinstance(result.get("errors"), list) else []
+    uploaded_files = result.get("uploaded_files") if isinstance(result.get("uploaded_files"), list) else []
+
+    return render(
+        request,
+        "pipeline/student_review_reports.html",
+        {
+            "form": form,
+            "job_run": job_run,
+            "summary": summary,
+            "errors": errors,
+            "uploaded_files": uploaded_files,
+            "result": result,
+        },
     )
 
 

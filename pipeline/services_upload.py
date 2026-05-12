@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import parse_qs, urlparse
 
 from admin_panel.google_oauth import (
     GOOGLE_OAUTH_UPLOAD_SCOPES,
@@ -21,6 +23,9 @@ class ReviewUploadError(RuntimeError):
     def __init__(self, category: str, message: str):
         super().__init__(message)
         self.category = category
+
+
+_DRIVE_FOLDER_RE = re.compile(r"/folders/([a-zA-Z0-9_-]+)")
 
 
 def _require_env_path(var_name: str) -> Path:
@@ -73,6 +78,26 @@ def resolve_review_folder_id(class_code: str) -> str:
         "invalid_config",
         "Set GOOGLE_REVIEW_FOLDER_ID or GOOGLE_REVIEW_FOLDER_MAP for DOCX review uploads",
     )
+
+
+def extract_drive_folder_id(value: str) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        raise ReviewUploadError("invalid_config", "Google Drive folder URL is required")
+
+    folder_match = _DRIVE_FOLDER_RE.search(raw)
+    if folder_match:
+        return folder_match.group(1)
+
+    parsed = urlparse(raw)
+    query_id = parse_qs(parsed.query).get("id", [None])[0]
+    if query_id:
+        return query_id
+
+    if re.fullmatch(r"[a-zA-Z0-9_-]{10,}", raw):
+        return raw
+
+    raise ReviewUploadError("invalid_config", f"Could not extract Google Drive folder id from: {raw}")
 
 
 def _build_drive_service():
@@ -169,6 +194,49 @@ def _upload_or_update_file(service, *, local_path: Path, folder_id: str, duplica
         .execute()
     )
     return result["id"], result.get("webViewLink", "")
+
+
+def _upload_or_update_file_with_action(
+    service,
+    *,
+    local_path: Path,
+    folder_id: str,
+    duplicate_strategy: str,
+) -> tuple[str, str, str]:
+    from googleapiclient.http import MediaFileUpload
+
+    mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    media = MediaFileUpload(str(local_path), mimetype=mime, resumable=False)
+
+    existing = _find_existing_file(service, name=local_path.name, parent_id=folder_id)
+    if existing and duplicate_strategy == "update":
+        result = (
+            service.files()
+            .update(
+                fileId=existing["id"],
+                media_body=media,
+                fields="id,webViewLink",
+                supportsAllDrives=True,
+            )
+            .execute()
+        )
+        return result["id"], result.get("webViewLink", ""), "updated"
+
+    if existing and duplicate_strategy == "skip":
+        return existing["id"], existing.get("webViewLink", ""), "skipped"
+
+    meta = {"name": local_path.name, "parents": [folder_id]}
+    result = (
+        service.files()
+        .create(
+            body=meta,
+            media_body=media,
+            fields="id,webViewLink",
+            supportsAllDrives=True,
+        )
+        .execute()
+    )
+    return result["id"], result.get("webViewLink", ""), "created"
 
 
 def _normalize_docx_inputs(docx_files: Iterable[dict | str]) -> list[dict]:
@@ -294,6 +362,92 @@ def run_upload_docx_review_step(
         "uploaded_total": len(files),
         "uploaded_success": uploaded_success,
         "uploaded_failed": uploaded_failed,
+        "uploaded_files": uploaded_files,
+        "errors": errors,
+    }
+
+
+def upload_docx_files_to_drive_folder(
+    *,
+    docx_files: Iterable[dict | str],
+    folder_id: str,
+    job_run: JobRun | None = None,
+    duplicate_strategy: str = "update",
+) -> dict:
+    files = _normalize_docx_inputs(docx_files)
+    strategy = (duplicate_strategy or "update").strip().lower()
+    if strategy not in {"update", "skip"}:
+        raise ReviewUploadError("invalid_config", "duplicate_strategy must be either 'update' or 'skip'")
+
+    service = _build_drive_service()
+    uploaded_success = 0
+    uploaded_failed = 0
+    uploaded_created = 0
+    uploaded_updated = 0
+    uploaded_skipped = 0
+    uploaded_files: list[dict] = []
+    errors: list[dict] = []
+
+    for entry in files:
+        path = Path(entry["path"])
+        try:
+            if job_run:
+                log_step(
+                    job_run=job_run,
+                    level=JobLog.Level.INFO,
+                    message="DOCX upload to review folder started",
+                    context={"name": entry["name"], "path": str(path), "folder_id": folder_id},
+                )
+
+            if not path.exists():
+                raise FileNotFoundError(f"DOCX file not found: {path}")
+
+            file_id, link, action = _upload_or_update_file_with_action(
+                service,
+                local_path=path,
+                folder_id=folder_id,
+                duplicate_strategy=strategy,
+            )
+            uploaded_success += 1
+            if action == "created":
+                uploaded_created += 1
+                message = "DOCX uploaded to Drive"
+            elif action == "updated":
+                uploaded_updated += 1
+                message = "Existing Drive DOCX updated"
+            else:
+                uploaded_skipped += 1
+                message = "Existing Drive DOCX skipped"
+
+            payload = {
+                "name": path.name,
+                "class_code": entry["class_code"],
+                "drive_file_id": file_id,
+                "link": link,
+                "action": action,
+            }
+            uploaded_files.append(payload)
+            if job_run:
+                log_step(job_run=job_run, level=JobLog.Level.INFO, message=message, context=payload)
+        except Exception as exc:  # noqa: BLE001
+            uploaded_failed += 1
+            error = {
+                "name": entry["name"],
+                "class_code": entry["class_code"],
+                "error": str(exc),
+                "type": exc.__class__.__name__,
+            }
+            errors.append(error)
+            if job_run:
+                log_step(job_run=job_run, level=JobLog.Level.ERROR, message="DOCX upload to Drive failed", context=error)
+
+    return {
+        "uploaded_total": len(files),
+        "uploaded_success": uploaded_success,
+        "uploaded_failed": uploaded_failed,
+        "uploaded_created": uploaded_created,
+        "uploaded_updated": uploaded_updated,
+        "uploaded_skipped": uploaded_skipped,
         "uploaded_files": uploaded_files,
         "errors": errors,
     }

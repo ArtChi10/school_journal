@@ -220,7 +220,16 @@ from openpyxl import load_workbook
 
 
 
-def fill_header(report_data, template_path, output_path, workbook_path) -> list:
+def fill_header(
+    report_data,
+    template_path,
+    output_path,
+    workbook_path=None,
+    *,
+    module_number=None,
+    module_dates="",
+    include_tutor=True,
+) -> list:
     """
     Генерирует «первые страницы» по шаблону.
     Берёт общий текст и имя тьютора с листа «Тьютор | Tutor»,
@@ -234,71 +243,77 @@ def fill_header(report_data, template_path, output_path, workbook_path) -> list:
         class_code = student.level or ""
         ap = get_assistant_principal_for_class(class_code) or ""
 
-        # 1) Берём общий текст/имя тьютора (из глобалей или helpers)
-        global TutorName, TutorText
-        if TutorName or TutorText:
-            tutor_name = TutorName or ""
-            tutor_text = TutorText or ""
-        else:
-            if class_code not in tutor_cache:
-                tutor_cache[class_code] = get_tutor_info_from_xlsx(
-                    workbook_path, class_code, debug=False
-                )
-            tutor_text, tutor_name = tutor_cache[class_code]
-        tutor_text_final = (tutor_text or "").strip()
-        personal_comment = ""
-        wb = load_workbook(workbook_path, data_only=True)
-        for sheet in wb.sheetnames:
-            title_norm = (sheet or "").strip().lower()
-            if title_norm == "тьютор | tutor" or "тьютор" in title_norm or "tutor" in title_norm:
-                ws = wb[sheet]
-                target = student.last_name
-                addr = ""
-                # --- найти строку заголовков и номера нужных колонок ---
-                for row in ws.iter_rows(min_row=1, max_row=ws.max_row,
-                                        min_col=1, max_col=ws.max_column):
-                    for cell in row:
-                        v = cell.value
-                        if isinstance(v, str) and v.strip().lower() == target.lower():
-                            addr = cell.coordinate  # например: 'B9'
-                            break
-                    if addr:
-                        break
-                #target2 = student.first_name
-                #addr2 = "A"+addr[1:]
-                #if target2.lower() == wb[sheet][addr2].value.lower():
-                    #personal_comment = wb[sheet]["C"+addr2[1:]].value
-                ws = wb[sheet]
+        tutor_name = ""
+        tutor_text_final = ""
+        if include_tutor:
+            # 1) Берём общий текст/имя тьютора (из глобалей или helpers)
+            global TutorName, TutorText
+            if TutorName or TutorText:
+                tutor_name = TutorName or ""
+                tutor_text = TutorText or ""
+            else:
+                if workbook_path and class_code not in tutor_cache:
+                    tutor_cache[class_code] = get_tutor_info_from_xlsx(
+                        workbook_path, class_code, debug=False
+                    )
+                tutor_text, tutor_name = tutor_cache.get(class_code, ("", ""))
+            tutor_text_final = (tutor_text or "").strip()
+            personal_comment = ""
+            if workbook_path:
+                wb = load_workbook(workbook_path, data_only=True)
+                for sheet in wb.sheetnames:
+                    title_norm = (sheet or "").strip().lower()
+                    if title_norm == "тьютор | tutor" or "тьютор" in title_norm or "tutor" in title_norm:
+                        ws = wb[sheet]
+                        target = student.last_name
+                        addr = ""
+                        # --- найти строку заголовков и номера нужных колонок ---
+                        for row in ws.iter_rows(min_row=1, max_row=ws.max_row,
+                                                min_col=1, max_col=ws.max_column):
+                            for cell in row:
+                                v = cell.value
+                                if isinstance(v, str) and v.strip().lower() == target.lower():
+                                    addr = cell.coordinate  # например: 'B9'
+                                    break
+                            if addr:
+                                break
+                        #target2 = student.first_name
+                        #addr2 = "A"+addr[1:]
+                        #if target2.lower() == wb[sheet][addr2].value.lower():
+                            #personal_comment = wb[sheet]["C"+addr2[1:]].value
+                        ws = wb[sheet]
 
-                def norm(s):
-                    return " ".join(str(s or "").split()).strip().lower()
+                        def norm(s):
+                            return " ".join(str(s or "").split()).strip().lower()
 
-                # 1) ищем строку ученика в колонке B (Фамилия)
-                row_idx = None
-                for cell in ws['B']:  # ws['B'] -> кортеж всех ячеек колонки B
-                    if norm(cell.value) == norm(student.last_name):
-                        row_idx = cell.row
-                        break
+                        # 1) ищем строку ученика в колонке B (Фамилия)
+                        row_idx = None
+                        for cell in ws['B']:  # ws['B'] -> кортеж всех ячеек колонки B
+                            if norm(cell.value) == norm(student.last_name):
+                                row_idx = cell.row
+                                break
 
-                # 2) берём комментарий из колонки C этой же строки
-                personal_comment = ""
-                if row_idx:
-                    # если уверен, что комментарий в 'C'
-                    personal_comment = ws[f"C{row_idx}"].value or ""
-                    # или надёжнее по номеру колонки, если ты его вычислял как col_comment:
-                    # personal_comment = ws.cell(row=row_idx, column=col_comment).value or ""
+                        # 2) берём комментарий из колонки C этой же строки
+                        personal_comment = ""
+                        if row_idx:
+                            # если уверен, что комментарий в 'C'
+                            personal_comment = ws[f"C{row_idx}"].value or ""
+                            # или надёжнее по номеру колонки, если ты его вычислял как col_comment:
+                            # personal_comment = ws.cell(row=row_idx, column=col_comment).value or ""
 
-        tutor_text_final = (TutorText or "").strip()
-        if personal_comment:
-            personal_comment = personal_comment.strip()
+            tutor_text_final = (TutorText or "").strip()
             if personal_comment:
-                tutor_text_final = tutor_text_final + ("\n\n" if tutor_text_final else "") + personal_comment
+                personal_comment = personal_comment.strip()
+                if personal_comment:
+                    tutor_text_final = tutor_text_final + ("\n\n" if tutor_text_final else "") + personal_comment
 
         # 3) Общий контекст для шаблона (всегда создаём ДО try)
         ctx = {
             "StudentName": f"{student.first_name} {student.last_name}",
             "Class": class_code,
             "AssistantPrincipal": ap,
+            "ModuleNumber": module_number or "",
+            "ModuleDates": module_dates or "",
             "TutorName": tutor_name or "",
             "TutorText": tutor_text_final or "",
             "HasTutor": bool(tutor_text_final),

@@ -41,6 +41,7 @@
               {% endif %}
               {% if perms.jobs.view_jobrun %}
                 <a class="nav-link {% if '/links/fill-check-report/' in request.path %}active{% endif %}" href="{% url 'journal_links:descriptor_criteria_fill_report' %}">Отчет заполненности</a>
+                <a class="nav-link {% if '/student-review-reports/' in request.path %}active{% endif %}" href="{% url 'pipeline:student_review_reports' %}">Отчеты на проверку</a>
               {% endif %}
               {% if perms.pipeline.view_criterionentry %}
                 <a class="nav-link {% if '/criteria-table/' in request.path %}active{% endif %}" href="{% url 'pipeline:criteria_table' %}">Таблица критериев</a>

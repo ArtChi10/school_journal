@@ -115,6 +115,7 @@ Replace `<SERVER_IP>` with the server IP or HTTP host:
 curl -I http://<SERVER_IP>/
 curl -I http://<SERVER_IP>/links/
 curl -I http://<SERVER_IP>/links/fill-check-report/
+curl -I http://<SERVER_IP>/student-review-reports/
 curl -I http://<SERVER_IP>/runs/
 curl -sS http://<SERVER_IP>/healthz
 curl -sS http://<SERVER_IP>/readyz
@@ -122,7 +123,7 @@ curl -sS http://<SERVER_IP>/readyz
 
 Expected results:
 
-- `/`, `/links/`, `/links/fill-check-report/`, and `/runs/` return HTTP success or an expected login/redirect response.
+- `/`, `/links/`, `/links/fill-check-report/`, `/student-review-reports/`, and `/runs/` return HTTP success or an expected login/redirect response.
 - `/healthz` returns `{"status":"ok"}`.
 - `/readyz` returns `{"status":"ok", ...}` when database and critical env checks pass.
 
@@ -163,6 +164,16 @@ Before using manual reminders, configure:
 
 - `TELEGRAM_BOT_TOKEN`
 - `TeacherContact` records with active `chat_id` values matching `teacher_name`
+
+## Student Review DOCX Reports
+
+The `Отчеты на проверку` page (`/student-review-reports/`) prepares per-student DOCX reports manually. An admin selects an active class sheet, pastes a Google Drive folder URL, and enters the module number and module dates. The action creates a `prepare_student_review_reports` JobRun with `trigger=manual` and `output_format=docx`.
+
+This workflow downloads only the selected active class sheet, generates one DOCX per student, and uploads those DOCX files directly into the chosen Drive folder. It does not create per-run subfolders. If a DOCX with the same name already exists in that folder, the existing Drive file is updated. Local temporary workbook/DOCX files are removed after upload.
+
+Primary classes `0` through `3` use the primary-school assessment scale and skip the tutor page. Other classes use the middle/high-school scale and the existing subject-page logic.
+
+This workflow does not generate PDF files, does not run AI, does not send Telegram messages, and does not send reports to parents. The OAuth token used by the app must include Google Drive upload access in addition to the sheet download access used by class links.
 
 Check the worker on the server with:
 

@@ -25,6 +25,7 @@ Use this checklist before promoting the production Docker Compose stack.
 - [ ] HTTP smoke URL `/` opens.
 - [ ] HTTP smoke URL `/links/` opens.
 - [ ] HTTP smoke URL `/links/fill-check-report/` opens.
+- [ ] HTTP smoke URL `/student-review-reports/` opens.
 - [ ] HTTP smoke URL `/runs/` opens.
 - [ ] HTTP smoke URL `/healthz` returns `ok`.
 - [ ] HTTP smoke URL `/readyz` returns `ok`.
@@ -46,6 +47,10 @@ Use this checklist before promoting the production Docker Compose stack.
 - [ ] Manual fill reminders are sent only from the `Отправить напоминания преподавателям` button.
 - [ ] Manual fill reminders require `TELEGRAM_BOT_TOKEN` and active `TeacherContact.chat_id` values.
 - [ ] The scheduled descriptor worker does not send Telegram reminders automatically.
+- [ ] `Отчеты на проверку` creates only manual `prepare_student_review_reports` JobRun records from selected active class links.
+- [ ] Student review DOCX reports upload to the admin-selected Drive folder and update existing files with the same name.
+- [ ] Student review DOCX reports do not generate PDFs, run AI, send Telegram, or send reports to parents.
+- [ ] OAuth credentials used for student review DOCX reports have Google Drive upload access.
 - [ ] If AI criteria review is used, `OPENAI_API_KEY` is configured in production.
 - [ ] If AI criteria Google report export is used, an active AI report target is configured separately from the descriptor report.
 - [ ] AI criteria review sends one batch AI request per class and skips empty/numeric-only criteria.
