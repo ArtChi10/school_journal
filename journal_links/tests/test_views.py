@@ -44,6 +44,20 @@ class JournalLinkViewsTests(TestCase):
         self.assertNotContains(response, "Science")
         self.assertNotContains(response, "Teacher")
 
+    def test_list_orders_links_by_id_ascending(self):
+        second_link = ClassSheetLink.objects.create(
+            class_code="1A",
+            subject_name="Math",
+            teacher_name="Another Teacher",
+            google_sheet_url="https://docs.google.com/spreadsheets/d/def456/edit#gid=0",
+            is_active=True,
+        )
+
+        response = self.client.get(reverse("journal_links:list_links"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([link.id for link in response.context["links"]], [self.link.id, second_link.id])
+
     def test_report_target_requires_change_permission(self):
         response = self.client.get(reverse("journal_links:descriptor_criteria_report_target"))
 

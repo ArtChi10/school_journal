@@ -182,7 +182,7 @@ def _descriptor_fill_report_data(request) -> dict:
 @login_required
 @permission_required_403("journal_links.view_classsheetlink", message="Доступ запрещён: нет прав на просмотр ссылок классов.")
 def list_links(request):
-    links = ClassSheetLink.objects.all().order_by("-is_active", "class_code", "id")
+    links = ClassSheetLink.objects.all().order_by("id")
     return render(request, "journal_links/list.html", {"links": links, "google_oauth_status": get_google_oauth_status()})
 
 @login_required
